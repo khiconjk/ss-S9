@@ -1,4 +1,4 @@
-name: Build ss-S9 starlte G960NK Kernel v6
+name: v6
 
 "on":
   workflow_dispatch:
