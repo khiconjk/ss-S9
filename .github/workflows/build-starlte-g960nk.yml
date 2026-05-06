@@ -63,6 +63,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             bc \
             bison \
+            binutils-aarch64-linux-gnu \
+            binutils-arm-linux-gnueabi \
             build-essential \
             ca-certificates \
             ccache \
@@ -87,9 +89,13 @@ jobs:
             zip
 
           echo "/usr/lib/ccache" >> "$GITHUB_PATH"
+
+          echo "===== TOOLCHAIN ====="
           clang --version
           aarch64-linux-gnu-gcc --version
+          aarch64-linux-gnu-as --version
           arm-linux-gnueabi-gcc --version
+          arm-linux-gnueabi-as --version
 
       - name: Select device config
         id: target
@@ -165,6 +171,19 @@ jobs:
           echo "PLATFORM_VERSION=$PLATFORM_VERSION"
           echo "ANDROID_MAJOR_VERSION=$ANDROID_MAJOR_VERSION"
 
+      - name: Clean source tree
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          rm -f "arch/arm64/configs/$TEMP_DEFCONFIG"
+          rm -f .config .config.old
+          rm -rf include/config include/generated arch/arm64/include/generated
+          rm -f build.log clean.log defconfig.log olddefconfig.log
+
+          make ARCH=arm64 mrproper 2>&1 | tee clean.log || true
+
       - name: Prepare defconfig
         shell: bash
         working-directory: kernel
@@ -197,7 +216,7 @@ jobs:
           ls -lah "$TEMP_CONFIG"
           tail -80 "$TEMP_CONFIG" || true
 
-      - name: Build kernel
+      - name: Build kernel with fixed ARM64 clang target
         shell: bash
         working-directory: kernel
         run: |
@@ -208,8 +227,17 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
           export CLANG_TRIPLE=aarch64-linux-gnu-
-          export CC=clang
+          export CC="clang --target=aarch64-linux-gnu -no-integrated-as"
           export HOSTCC=gcc
+          export HOSTCXX=g++
+          export AS=aarch64-linux-gnu-as
+          export LD=aarch64-linux-gnu-ld.bfd
+          export AR=aarch64-linux-gnu-ar
+          export NM=aarch64-linux-gnu-nm
+          export OBJCOPY=aarch64-linux-gnu-objcopy
+          export OBJDUMP=aarch64-linux-gnu-objdump
+          export STRIP=aarch64-linux-gnu-strip
+          export READELF=aarch64-linux-gnu-readelf
           export PLATFORM_VERSION="$PLATFORM_VERSION"
           export ANDROID_MAJOR_VERSION="$ANDROID_MAJOR_VERSION"
           export CONFIG_SECTION_MISMATCH_WARN_ONLY=y
@@ -217,20 +245,31 @@ jobs:
           export KBUILD_BUILD_HOST=github-actions
 
           MAKE_ARGS=(
+            V=1
             ARCH=arm64
             SUBARCH=arm64
             CROSS_COMPILE=aarch64-linux-gnu-
             CROSS_COMPILE_ARM32=arm-linux-gnueabi-
             CLANG_TRIPLE=aarch64-linux-gnu-
-            CC=clang
+            "CC=clang --target=aarch64-linux-gnu -no-integrated-as"
             HOSTCC=gcc
+            HOSTCXX=g++
+            AS=aarch64-linux-gnu-as
+            LD=aarch64-linux-gnu-ld.bfd
+            AR=aarch64-linux-gnu-ar
+            NM=aarch64-linux-gnu-nm
+            OBJCOPY=aarch64-linux-gnu-objcopy
+            OBJDUMP=aarch64-linux-gnu-objdump
+            STRIP=aarch64-linux-gnu-strip
+            READELF=aarch64-linux-gnu-readelf
             PLATFORM_VERSION="$PLATFORM_VERSION"
             ANDROID_MAJOR_VERSION="$ANDROID_MAJOR_VERSION"
             CONFIG_SECTION_MISMATCH_WARN_ONLY=y
           )
 
-          echo "===== CLEAN ====="
-          make "${MAKE_ARGS[@]}" mrproper 2>&1 | tee clean.log || true
+          echo "===== COMPILER TEST ====="
+          clang --target=aarch64-linux-gnu -no-integrated-as -x c -c /dev/null -o /tmp/clang-arm64-test.o
+          file /tmp/clang-arm64-test.o
 
           echo "===== DEFCONFIG ====="
           make "${MAKE_ARGS[@]}" "$TEMP_DEFCONFIG" 2>&1 | tee defconfig.log
@@ -253,14 +292,14 @@ jobs:
         working-directory: kernel
         run: |
           echo "===== ERROR LINES ====="
-          grep -nEi "error:|fatal error:|undefined reference|ld.lld|ld:|No such file|No rule to make target|FAILED|recipe for target|Stop\.|not found|Permission denied" \
-            clean.log defconfig.log olddefconfig.log build.log 2>/dev/null | tail -300 || true
+          grep -nEi "error:|fatal error:|undefined reference|ld.lld|ld:|No such file|No rule to make target|FAILED|recipe for target|Stop\.|not found|Permission denied|unrecognized option|unknown argument|unsupported option" \
+            clean.log defconfig.log olddefconfig.log build.log 2>/dev/null | tail -350 || true
 
-          echo "===== LAST 250 BUILD LINES ====="
-          tail -250 build.log 2>/dev/null || true
+          echo "===== LAST 300 BUILD LINES ====="
+          tail -300 build.log 2>/dev/null || true
 
-          echo "===== LAST 150 DEFCONFIG LINES ====="
-          tail -150 defconfig.log 2>/dev/null || true
+          echo "===== LAST 180 DEFCONFIG LINES ====="
+          tail -180 defconfig.log 2>/dev/null || true
 
       - name: Collect kernel outputs
         shell: bash
