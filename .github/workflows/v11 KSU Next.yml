@@ -1,4 +1,4 @@
-name: v10 KSU Next
+name: v11 KSU Next
 
 "on":
   workflow_dispatch:
@@ -190,7 +190,7 @@ jobs:
           echo "Clean done" | tee -a clean.log
 
 
-      - name: Patch kernel release to G960NK v10 KSU Next
+      - name: Patch kernel release to G960NK v11 KSU Next
         shell: bash
         working-directory: kernel
         run: |
@@ -209,9 +209,9 @@ jobs:
           text = re.sub(r"^SUBLEVEL\s*=\s*.*$", "SUBLEVEL = 220", text, flags=re.MULTILINE)
 
           if re.search(r"^EXTRAVERSION\s*=", text, flags=re.MULTILINE):
-              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v10-ksunext", text, flags=re.MULTILINE)
+              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v11-ksunext", text, flags=re.MULTILINE)
           else:
-              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v10-ksunext", 1)
+              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v11-ksunext", 1)
 
           makefile.write_text(text)
           PY
@@ -219,7 +219,7 @@ jobs:
           echo "===== AFTER VERSION PATCH ====="
           grep -nE "^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)[[:space:]]*=" Makefile || true
 
-          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v10-ksunext"
+          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v11-ksunext"
 
 
       - name: Patch clang external assembler prefix
@@ -293,55 +293,15 @@ jobs:
           command -v aarch64-linux-gnu-gcc
 
 
-      - name: Add KernelSU Next legacy kprobe
-        shell: bash
-        working-directory: kernel
-        run: |
-          set -e
-
-          echo "===== ADD KERNELSU NEXT LEGACY ====="
-          rm -rf KernelSU KernelSU-Next
-
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
-
-          echo "===== KERNELSU PATH AUTODETECT ====="
-          KSU_DIR=""
-
-          for CANDIDATE in KernelSU KernelSU-Next drivers/kernelsu kernel/kernelsu; do
-            if [ -e "$CANDIDATE" ]; then
-              KSU_DIR="$CANDIDATE"
-              break
-            fi
-          done
-
-          if [ -z "$KSU_DIR" ]; then
-            echo "No KernelSU directory named KernelSU/KernelSU-Next found."
-            echo "This may still be OK if setup.sh patched Kconfig/Makefile by another path."
-            echo "Top-level tree:"
-            find . -maxdepth 2 -type d | sort | head -120
-          else
-            echo "KSU_DIR=$KSU_DIR" | tee ksu-path.log
-            find "$KSU_DIR" -maxdepth 3 -type f \( -name "Kconfig" -o -name "Makefile" -o -name "*.c" -o -name "*.h" \) | head -100
-          fi
-
-          echo "===== KERNELSU KCONFIG REFERENCES ====="
-          grep -RIn "KernelSU\|KernelSU-Next\|CONFIG_KSU\|source.*KSU\|kernelsu" Kconfig Makefile drivers fs kernel security arch 2>/dev/null | head -200 || true
-
-          echo "===== VERIFY KSU INTEGRATION MARKERS ====="
-          if ! grep -RIn "CONFIG_KSU\|source.*KernelSU\|source.*KernelSU-Next\|kernelsu" Kconfig Makefile drivers fs kernel security arch 2>/dev/null | head -1; then
-            echo "ERROR: KernelSU setup finished, but no KSU integration marker was found"
-            exit 1
-          fi
-
-
       - name: Add KernelSU Next official legacy
         shell: bash
         working-directory: kernel
         run: |
           set -e
 
-          echo "===== ADD KERNELSU NEXT OFFICIAL LEGACY ====="
+          echo "===== ADD KERNELSU NEXT OFFICIAL LEGACY v11 ====="
           rm -rf KernelSU KernelSU-Next drivers/kernelsu kernel/kernelsu
+          rm -f ksu-path.log ksu-files-preview.txt ksu-markers.txt
 
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
@@ -358,12 +318,12 @@ jobs:
           if [ -n "$KSU_DIR" ]; then
             echo "KSU_DIR=$KSU_DIR" | tee ksu-path.log
             find "$KSU_DIR" -maxdepth 3 -type f \( -name "Kconfig" -o -name "Makefile" -o -name "*.c" -o -name "*.h" \) > ksu-files-preview.txt || true
-            sed -n '1,160p' ksu-files-preview.txt || true
+            sed -n '1,180p' ksu-files-preview.txt || true
           else
             echo "KernelSU Next directory not found by common names."
             echo "This can still be valid if setup.sh patched source directly."
-            find . -maxdepth 2 -type d | sort > ksu-dirs-preview.txt || true
-            sed -n '1,180p' ksu-dirs-preview.txt || true
+            find . -maxdepth 2 -type d | sort > ksu-files-preview.txt || true
+            sed -n '1,180p' ksu-files-preview.txt || true
           fi
 
           echo "===== KSU NEXT PATCH MARKERS ====="
@@ -377,6 +337,7 @@ jobs:
           fi
 
           echo "KernelSU Next setup markers found."
+
 
       - name: Prepare defconfig
         shell: bash
@@ -406,6 +367,14 @@ jobs:
 
           printf '\n# GitHub Actions target: %s %s Android 10 Q\n' "$DEVICE" "$MODEL_NAME" >> "$TEMP_CONFIG"
 
+          cat >> "$TEMP_CONFIG" <<'EOF'
+
+          # KernelSU Next official legacy v11
+          CONFIG_KSU=y
+          CONFIG_KPROBES=y
+          CONFIG_KPROBE_EVENTS=y
+          CONFIG_KSU_KPROBE_HOOKS=y
+          EOF
 
           echo "===== TEMP DEFCONFIG ====="
           ls -lah "$TEMP_CONFIG"
@@ -578,7 +547,7 @@ jobs:
           RAW_DIR="$OUT_DIR/raw"
           AK_DIR="$GITHUB_WORKSPACE/AnyKernel3"
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
-          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-OneUI2.5-Q-v10-ksunext-${SHORT_SHA}.zip"
+          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-OneUI2.5-Q-v11-ksunext-${SHORT_SHA}.zip"
 
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 "$AK_DIR"
 
@@ -597,7 +566,7 @@ jobs:
             "## Target: Samsung Galaxy S9 ${MODEL_NAME} / ${DEVICE} / One UI 2.5 Android 10" \
             "" \
             "properties() { '" \
-            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} OneUI2.5 Android10 Q v10 KernelSU Next" \
+            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} OneUI2.5 Android10 Q v11 KernelSU Next" \
             "do.devicecheck=1" \
             "do.modules=0" \
             "do.systemless=1" \
@@ -646,7 +615,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v10-ksunext
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v11-ksunext
           path: |
             out/*.zip
             out/raw/*
