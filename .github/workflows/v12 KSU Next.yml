@@ -1,4 +1,4 @@
-name: v11 KSU Next
+name: v12 KSU Next Manual Hook
 
 "on":
   workflow_dispatch:
@@ -190,7 +190,7 @@ jobs:
           echo "Clean done" | tee -a clean.log
 
 
-      - name: Patch kernel release to G960NK v11 KSU Next
+      - name: Patch kernel release to G960NK v12 KSU Next Manual Hook
         shell: bash
         working-directory: kernel
         run: |
@@ -209,9 +209,9 @@ jobs:
           text = re.sub(r"^SUBLEVEL\s*=\s*.*$", "SUBLEVEL = 220", text, flags=re.MULTILINE)
 
           if re.search(r"^EXTRAVERSION\s*=", text, flags=re.MULTILINE):
-              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v11-ksunext", text, flags=re.MULTILINE)
+              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v12-ksunext-manual", text, flags=re.MULTILINE)
           else:
-              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v11-ksunext", 1)
+              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v12-ksunext-manual", 1)
 
           makefile.write_text(text)
           PY
@@ -219,7 +219,7 @@ jobs:
           echo "===== AFTER VERSION PATCH ====="
           grep -nE "^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)[[:space:]]*=" Makefile || true
 
-          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v11-ksunext"
+          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v12-ksunext-manual"
 
 
       - name: Patch clang external assembler prefix
@@ -339,6 +339,311 @@ jobs:
           echo "KernelSU Next setup markers found."
 
 
+
+      - name: Patch KernelSU Next manual hooks
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          echo "===== PATCH KERNELSU NEXT MANUAL HOOKS v12 ====="
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def read(path):
+              p = Path(path)
+              if not p.exists():
+                  print(f"[SKIP] {path}: missing")
+                  return None
+              return p.read_text(errors="ignore")
+
+          def write(path, text):
+              Path(path).write_text(text)
+
+          def insert_before(path, marker, block, tag):
+              text = read(path)
+              if text is None:
+                  return False
+              if tag in text:
+                  print(f"[OK] {path}: {tag} already present")
+                  return True
+              idx = text.find(marker)
+              if idx < 0:
+                  print(f"[WARN] {path}: marker not found for {tag}: {marker}")
+                  return False
+              text = text[:idx] + block + "\n" + text[idx:]
+              write(path, text)
+              print(f"[PATCH] {path}: inserted {tag}")
+              return True
+
+          def find_open_brace(text, start):
+              brace = text.find("{", start)
+              return brace
+
+          def insert_after_brace(path, func_marker, block, tag):
+              text = read(path)
+              if text is None:
+                  return False
+              if tag in text:
+                  print(f"[OK] {path}: {tag} already present")
+                  return True
+              start = text.find(func_marker)
+              if start < 0:
+                  print(f"[WARN] {path}: function marker not found for {tag}: {func_marker}")
+                  return False
+              brace = find_open_brace(text, start)
+              if brace < 0:
+                  print(f"[WARN] {path}: opening brace not found for {tag}")
+                  return False
+              insert_at = brace + 1
+              text = text[:insert_at] + "\n" + block + text[insert_at:]
+              write(path, text)
+              print(f"[PATCH] {path}: inserted {tag}")
+              return True
+
+          def insert_after_in_func(path, func_marker, after_marker, block, tag):
+              text = read(path)
+              if text is None:
+                  return False
+              if tag in text:
+                  print(f"[OK] {path}: {tag} already present")
+                  return True
+              start = text.find(func_marker)
+              if start < 0:
+                  print(f"[WARN] {path}: function marker not found for {tag}: {func_marker}")
+                  return False
+              idx = text.find(after_marker, start)
+              if idx < 0:
+                  print(f"[WARN] {path}: inner marker not found for {tag}: {after_marker}")
+                  return False
+              insert_at = idx + len(after_marker)
+              text = text[:insert_at] + "\n" + block + text[insert_at:]
+              write(path, text)
+              print(f"[PATCH] {path}: inserted {tag}")
+              return True
+
+          # 1) fs/exec.c - native do_execve hook
+          exec_extern = """#ifdef CONFIG_KSU
+          /* KSU_NEXT_MANUAL_HOOK_EXEC_EXTERN */
+          __attribute__((hot))
+          extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
+                          void *argv, void *envp, int *flags);
+          #endif
+          """
+          insert_before(
+              "fs/exec.c",
+              "int do_execve(struct filename *filename",
+              exec_extern,
+              "KSU_NEXT_MANUAL_HOOK_EXEC_EXTERN",
+          )
+
+          exec_call = """#ifdef CONFIG_KSU
+          \t/* KSU_NEXT_MANUAL_HOOK_EXEC_CALL */
+          \tksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
+          #endif"""
+          ok_exec = insert_after_in_func(
+              "fs/exec.c",
+              "int do_execve(struct filename *filename",
+              "struct user_arg_ptr envp = { .ptr.native = __envp };",
+              exec_call,
+              "KSU_NEXT_MANUAL_HOOK_EXEC_CALL",
+          )
+          if not ok_exec:
+              print("[WARN] fs/exec.c: native do_execve hook was not applied; continuing because reboot hook is the Kbuild gate")
+
+          # 2) fs/open.c - faccessat hook
+          open_extern = """#ifdef CONFIG_KSU
+          /* KSU_NEXT_MANUAL_HOOK_FACCESSAT_EXTERN */
+          __attribute__((hot))
+          extern int ksu_handle_faccessat(int *dfd, const char __user **filename_user,
+                          int *mode, int *flags);
+          #endif
+
+          """
+          open_text = read("fs/open.c")
+          if open_text is not None:
+              if "KSU_NEXT_MANUAL_HOOK_FACCESSAT_EXTERN" not in open_text:
+                  markers = ["SYSCALL_DEFINE3(faccessat", "long do_faccessat("]
+                  placed = False
+                  for m in markers:
+                      if m in open_text:
+                          open_text = open_text.replace(m, open_extern + m, 1)
+                          placed = True
+                          break
+                  if placed:
+                      write("fs/open.c", open_text)
+                      print("[PATCH] fs/open.c: inserted KSU_NEXT_MANUAL_HOOK_FACCESSAT_EXTERN")
+                  else:
+                      print("[WARN] fs/open.c: faccessat marker not found for extern")
+              else:
+                  print("[OK] fs/open.c: faccessat extern already present")
+
+          open_call = """#ifdef CONFIG_KSU
+          \t/* KSU_NEXT_MANUAL_HOOK_FACCESSAT_CALL */
+          \tksu_handle_faccessat(&dfd, &filename, &mode, NULL);
+          #endif"""
+          ok_open = insert_after_in_func(
+              "fs/open.c",
+              "SYSCALL_DEFINE3(faccessat",
+              "unsigned int lookup_flags = LOOKUP_FOLLOW;",
+              open_call,
+              "KSU_NEXT_MANUAL_HOOK_FACCESSAT_CALL",
+          )
+          if not ok_open:
+              ok_open = insert_after_in_func(
+                  "fs/open.c",
+                  "long do_faccessat(",
+                  "unsigned int lookup_flags = LOOKUP_FOLLOW;",
+                  open_call,
+                  "KSU_NEXT_MANUAL_HOOK_FACCESSAT_CALL",
+              )
+          if not ok_open:
+              print("[WARN] fs/open.c: faccessat hook was not applied")
+
+          # 3) fs/read_write.c - sys_read hook
+          read_extern = """#ifdef CONFIG_KSU
+          /* KSU_NEXT_MANUAL_HOOK_READ_EXTERN */
+          extern bool ksu_vfs_read_hook __read_mostly;
+          extern __attribute__((cold)) int ksu_handle_sys_read(unsigned int fd,
+                          char __user **buf_ptr, size_t *count_ptr);
+          #endif
+
+          """
+          rw_text = read("fs/read_write.c")
+          if rw_text is not None:
+              if "KSU_NEXT_MANUAL_HOOK_READ_EXTERN" not in rw_text:
+                  marker = "SYSCALL_DEFINE3(read"
+                  if marker in rw_text:
+                      rw_text = rw_text.replace(marker, read_extern + marker, 1)
+                      write("fs/read_write.c", rw_text)
+                      print("[PATCH] fs/read_write.c: inserted KSU_NEXT_MANUAL_HOOK_READ_EXTERN")
+                  else:
+                      print("[WARN] fs/read_write.c: SYSCALL_DEFINE3(read marker not found for extern")
+              else:
+                  print("[OK] fs/read_write.c: read extern already present")
+
+          read_call = """#ifdef CONFIG_KSU
+          \t/* KSU_NEXT_MANUAL_HOOK_READ_CALL */
+          \tif (unlikely(ksu_vfs_read_hook))
+          \t\tksu_handle_sys_read(fd, (char __user **)&buf, &count);
+          #endif"""
+          ok_read = insert_after_in_func(
+              "fs/read_write.c",
+              "SYSCALL_DEFINE3(read",
+              "ssize_t ret = -EBADF;",
+              read_call,
+              "KSU_NEXT_MANUAL_HOOK_READ_CALL",
+          )
+          if not ok_read:
+              print("[WARN] fs/read_write.c: read hook was not applied")
+
+          # 4) fs/stat.c - newfstatat hook
+          stat_extern = """#ifdef CONFIG_KSU
+          /* KSU_NEXT_MANUAL_HOOK_STAT_EXTERN */
+          __attribute__((hot))
+          extern int ksu_handle_stat(int *dfd, const char __user **filename_user,
+                          int *flags);
+          #endif
+
+          """
+          stat_text = read("fs/stat.c")
+          if stat_text is not None:
+              if "KSU_NEXT_MANUAL_HOOK_STAT_EXTERN" not in stat_text:
+                  markers = ["SYSCALL_DEFINE4(newfstatat", "int vfs_fstatat(", "int vfs_statx("]
+                  placed = False
+                  for m in markers:
+                      if m in stat_text:
+                          stat_text = stat_text.replace(m, stat_extern + m, 1)
+                          placed = True
+                          break
+                  if placed:
+                      write("fs/stat.c", stat_text)
+                      print("[PATCH] fs/stat.c: inserted KSU_NEXT_MANUAL_HOOK_STAT_EXTERN")
+                  else:
+                      print("[WARN] fs/stat.c: stat marker not found for extern")
+              else:
+                  print("[OK] fs/stat.c: stat extern already present")
+
+          stat_call = """#ifdef CONFIG_KSU
+          \t/* KSU_NEXT_MANUAL_HOOK_STAT_CALL */
+          \tksu_handle_stat(&dfd, &filename, &flag);
+          #endif"""
+          ok_stat = insert_after_in_func(
+              "fs/stat.c",
+              "SYSCALL_DEFINE4(newfstatat",
+              "int error;",
+              stat_call,
+              "KSU_NEXT_MANUAL_HOOK_STAT_CALL",
+          )
+          if not ok_stat:
+              # fallback for vfs_fstatat uses variable 'flag'
+              ok_stat = insert_after_in_func(
+                  "fs/stat.c",
+                  "int vfs_fstatat(",
+                  "unsigned int lookup_flags = 0;",
+                  stat_call,
+                  "KSU_NEXT_MANUAL_HOOK_STAT_CALL",
+              )
+          if not ok_stat:
+              print("[WARN] fs/stat.c: stat hook was not applied")
+
+          # 5) kernel/reboot.c - this is required by KernelSU-Next Kbuild to accept manual mode
+          reboot_extern = """#ifdef CONFIG_KSU
+          /* KSU_NEXT_MANUAL_HOOK_REBOOT_EXTERN */
+          extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);
+          #endif
+
+          """
+          insert_before(
+              "kernel/reboot.c",
+              "SYSCALL_DEFINE4(reboot",
+              reboot_extern,
+              "KSU_NEXT_MANUAL_HOOK_REBOOT_EXTERN",
+          )
+
+          reboot_call = """#ifdef CONFIG_KSU
+          \t/* KSU_NEXT_MANUAL_HOOK_REBOOT_CALL */
+          \tksu_handle_sys_reboot(magic1, magic2, cmd, &arg);
+          #endif"""
+          ok_reboot = insert_after_in_func(
+              "kernel/reboot.c",
+              "SYSCALL_DEFINE4(reboot",
+              "int ret = 0;",
+              reboot_call,
+              "KSU_NEXT_MANUAL_HOOK_REBOOT_CALL",
+          )
+          if not ok_reboot:
+              ok_reboot = insert_after_brace(
+                  "kernel/reboot.c",
+                  "SYSCALL_DEFINE4(reboot",
+                  reboot_call,
+                  "KSU_NEXT_MANUAL_HOOK_REBOOT_CALL",
+              )
+
+          if not ok_reboot:
+              raise SystemExit("ERROR: kernel/reboot.c was not patched; KernelSU-Next Kbuild will fail manual mode")
+
+          print("===== MANUAL HOOK PATCH SUMMARY =====")
+          for f in ["fs/exec.c", "fs/open.c", "fs/read_write.c", "fs/stat.c", "kernel/reboot.c"]:
+              text = read(f)
+              if text is None:
+                  continue
+              count = text.count("KSU_NEXT_MANUAL_HOOK_")
+              print(f"{f}: {count} KSU_NEXT_MANUAL_HOOK markers")
+
+          reboot_text = read("kernel/reboot.c") or ""
+          if "ksu_handle_sys_reboot" not in reboot_text:
+              raise SystemExit("ERROR: ksu_handle_sys_reboot marker missing after patch")
+
+          print("Manual hook patch done.")
+          PY
+
+          echo "===== VERIFY MANUAL HOOK MARKERS ====="
+          grep -RIn "KSU_NEXT_MANUAL_HOOK\|ksu_handle_sys_reboot\|ksu_handle_execveat\|ksu_handle_faccessat\|ksu_handle_sys_read\|ksu_handle_stat" \
+            fs/exec.c fs/open.c fs/read_write.c fs/stat.c kernel/reboot.c 2>/dev/null || true
+
+
       - name: Prepare defconfig
         shell: bash
         working-directory: kernel
@@ -369,11 +674,11 @@ jobs:
 
           cat >> "$TEMP_CONFIG" <<'EOF'
 
-          # KernelSU Next official legacy v11
+          # KernelSU Next official legacy v12 manual hook
           CONFIG_KSU=y
-          CONFIG_KPROBES=y
-          CONFIG_KPROBE_EVENTS=y
-          CONFIG_KSU_KPROBE_HOOKS=y
+          CONFIG_KSU_MANUAL_HOOK=y
+          # CONFIG_KSU_KPROBES_HOOK is not set
+          # CONFIG_KSU_KPROBE_HOOKS is not set
           EOF
 
           echo "===== TEMP DEFCONFIG ====="
@@ -442,10 +747,20 @@ jobs:
           make "${MAKE_ARGS[@]}" olddefconfig 2>&1 | tee olddefconfig.log
 
           echo "===== CONFIG CHECK ====="
-          grep -E "CONFIG_SOC_EXYNOS9810|CONFIG_CAMERA_STAR|CONFIG_CAMERA_STAR2|CONFIG_CAMERA_CROWN|CONFIG_EXYNOS_DTBTOOL|CONFIG_BUILD_ARM64_APPENDED|CONFIG_MODULES|CONFIG_ANDROID|CONFIG_KSU|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS|CONFIG_KSU_KPROBE_HOOKS" .config || true
+          grep -E "CONFIG_SOC_EXYNOS9810|CONFIG_CAMERA_STAR|CONFIG_CAMERA_STAR2|CONFIG_CAMERA_CROWN|CONFIG_EXYNOS_DTBTOOL|CONFIG_BUILD_ARM64_APPENDED|CONFIG_MODULES|CONFIG_ANDROID|CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_KPROBES_HOOK|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS" .config || true
 
           if ! grep -q "^CONFIG_KSU=y" .config; then
             echo "ERROR: CONFIG_KSU was not enabled"
+            exit 1
+          fi
+
+          if ! grep -q "^CONFIG_KSU_MANUAL_HOOK=y" .config; then
+            echo "ERROR: CONFIG_KSU_MANUAL_HOOK was not enabled"
+            exit 1
+          fi
+
+          if ! grep -q "ksu_handle_sys_reboot" kernel/reboot.c; then
+            echo "ERROR: manual reboot hook marker missing; KernelSU-Next Kbuild will reject manual mode"
             exit 1
           fi
 
@@ -526,6 +841,7 @@ jobs:
           cp -av defconfig.log "$OUT_DIR/defconfig.log" || true
           cp -av olddefconfig.log "$OUT_DIR/olddefconfig.log" || true
           cp -av build.log "$OUT_DIR/build.log" || true
+          grep -RIn "KSU_NEXT_MANUAL_HOOK\|ksu_handle_sys_reboot\|ksu_handle_execveat\|ksu_handle_faccessat\|ksu_handle_sys_read\|ksu_handle_stat" fs/exec.c fs/open.c fs/read_write.c fs/stat.c kernel/reboot.c > "$OUT_DIR/KernelSU-manual-hooks.txt" 2>/dev/null || true
           cp -av .config "$OUT_DIR/kernel.config" || true
           for KSU_CANDIDATE in KernelSU-Next KernelSU drivers/kernelsu kernel/kernelsu; do
             if [ -e "$KSU_CANDIDATE" ]; then
@@ -533,7 +849,7 @@ jobs:
               break
             fi
           done
-          grep -E "CONFIG_KSU|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS|CONFIG_KSU_KPROBE_HOOKS" .config > "$OUT_DIR/KernelSU-config.txt" || true
+          grep -E "CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_KPROBES_HOOK|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS" .config > "$OUT_DIR/KernelSU-config.txt" || true
 
           echo "===== ARTIFACT TREE ====="
           find "$OUT_DIR" -maxdepth 3 -type f -print -exec ls -lh {} \;
@@ -547,7 +863,7 @@ jobs:
           RAW_DIR="$OUT_DIR/raw"
           AK_DIR="$GITHUB_WORKSPACE/AnyKernel3"
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
-          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-OneUI2.5-Q-v11-ksunext-${SHORT_SHA}.zip"
+          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-OneUI2.5-Q-v12-ksunext-manual-${SHORT_SHA}.zip"
 
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 "$AK_DIR"
 
@@ -566,7 +882,7 @@ jobs:
             "## Target: Samsung Galaxy S9 ${MODEL_NAME} / ${DEVICE} / One UI 2.5 Android 10" \
             "" \
             "properties() { '" \
-            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} OneUI2.5 Android10 Q v11 KernelSU Next" \
+            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} OneUI2.5 Android10 Q v12 KernelSU Next Manual" \
             "do.devicecheck=1" \
             "do.modules=0" \
             "do.systemless=1" \
@@ -615,7 +931,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v11-ksunext
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v12-ksunext-manual
           path: |
             out/*.zip
             out/raw/*
@@ -623,5 +939,6 @@ jobs:
             out/kernel.config
             out/modules-*
             out/KernelSU-*.txt
+            out/KernelSU-manual-hooks.txt
           if-no-files-found: error
           compression-level: 6
