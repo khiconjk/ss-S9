@@ -1,4 +1,4 @@
-name: Build ss-S9 starlte G960NK Kernel v14 KSU Next Stable
+name: v14 KSU Next Stable
 
 "on":
   workflow_dispatch:
