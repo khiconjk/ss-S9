@@ -1,4 +1,4 @@
-name: v32 KSU Next + SuSFS ksud NoInitExec L18
+name: v33 KSU Next + SuSFS Stable Restore L19
 
 "on":
   workflow_dispatch:
@@ -193,7 +193,7 @@ jobs:
           echo "Clean done" | tee -a clean.log
 
 
-      - name: Patch kernel release to G960NK v32 KSU Next + SuSFS ksud NoInitExec L18
+      - name: Patch kernel release to G960NK v33 KSU Next + SuSFS Stable Restore L19
         shell: bash
         working-directory: kernel
         run: |
@@ -212,9 +212,9 @@ jobs:
           text = re.sub(r"^SUBLEVEL\s*=\s*.*$", "SUBLEVEL = 220", text, flags=re.MULTILINE)
 
           if re.search(r"^EXTRAVERSION\s*=", text, flags=re.MULTILINE):
-              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v32-ksunext-susfs-ksudnoinit-l18", text, flags=re.MULTILINE)
+              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v33-ksunext-susfs-stable-restore-l19", text, flags=re.MULTILINE)
           else:
-              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v32-ksunext-susfs-ksudnoinit-l18", 1)
+              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v33-ksunext-susfs-stable-restore-l19", 1)
 
           makefile.write_text(text)
           PY
@@ -222,7 +222,7 @@ jobs:
           echo "===== AFTER VERSION PATCH ====="
           grep -nE "^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)[[:space:]]*=" Makefile || true
 
-          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v32-ksunext-susfs-ksudnoinit-l18"
+          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v33-ksunext-susfs-stable-restore-l19"
 
 
       - name: Patch clang external assembler prefix
@@ -757,7 +757,7 @@ jobs:
 
 
 
-      - name: Add SuSFS 4.9 patches bridge level 18
+      - name: Add SuSFS 4.9 patches bridge level 15
         shell: bash
         working-directory: kernel
         run: |
@@ -800,8 +800,8 @@ jobs:
             exit 1
           fi
 
-          echo "===== PATCH SUSFS CORE FOR KERNELSU NEXT LEGACY L18 ====="
-          python3 - <<'PY' 2>&1 | tee susfs-core-compat-l18.log
+          echo "===== PATCH SUSFS CORE FOR KERNELSU NEXT LEGACY L19 ====="
+          python3 - <<'PY' 2>&1 | tee susfs-core-compat-l19.log
           from pathlib import Path
 
           p = Path("fs/susfs.c")
@@ -811,16 +811,16 @@ jobs:
 
           old_include = '#include "../drivers/kernelsu/core_hook.h"'
           if old_include in text:
-              text = text.replace(old_include, '/* KSU_NEXT_SUSFS_BRIDGE_L18_REMOVED_OLD_CORE_HOOK */')
+              text = text.replace(old_include, '/* KSU_NEXT_SUSFS_BRIDGE_L19_REMOVED_OLD_CORE_HOOK */')
               print("[PATCH] fs/susfs.c: removed old KernelSU core_hook.h include")
           else:
               print("[OK] fs/susfs.c: old core_hook.h include not present")
 
-          compat_token = "KSU_NEXT_SUSFS_BRIDGE_L18_TRY_UMOUNT_COMPAT"
+          compat_token = "KSU_NEXT_SUSFS_BRIDGE_L19_TRY_UMOUNT_COMPAT"
           if compat_token not in text:
               compat = (
                   "\n#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT\n"
-                  "/* KSU_NEXT_SUSFS_BRIDGE_L18_TRY_UMOUNT_COMPAT */\n"
+                  "/* KSU_NEXT_SUSFS_BRIDGE_L19_TRY_UMOUNT_COMPAT */\n"
                   "static void try_umount(const char *mnt, bool check_mnt, int flags)\n"
                   "{\n"
                   "\tstruct path path;\n"
@@ -861,14 +861,14 @@ jobs:
 
           print("===== SUSFS CORE COMPAT MARKERS =====")
           for token in [
-              "KSU_NEXT_SUSFS_BRIDGE_L18_REMOVED_OLD_CORE_HOOK",
-              "KSU_NEXT_SUSFS_BRIDGE_L18_TRY_UMOUNT_COMPAT",
+              "KSU_NEXT_SUSFS_BRIDGE_L19_REMOVED_OLD_CORE_HOOK",
+              "KSU_NEXT_SUSFS_BRIDGE_L19_TRY_UMOUNT_COMPAT",
           ]:
               print(f"fs/susfs.c: {token}=" + ("yes" if token in text else "no"))
           PY
 
-          echo "===== VERIFY SUSFS CORE COMPAT L18 ====="
-          grep -n "core_hook.h\|KSU_NEXT_SUSFS_BRIDGE_L18\|static void try_umount" fs/susfs.c | tee susfs-core-compat-verify-l18.log || true
+          echo "===== VERIFY SUSFS CORE COMPAT L19 ====="
+          grep -n "core_hook.h\|KSU_NEXT_SUSFS_BRIDGE_L19\|static void try_umount" fs/susfs.c | tee susfs-core-compat-verify-l19.log || true
 
           echo "===== PATCH KERNEL SOURCE FOR SUSFS 4.9 FIRST ====="
           KERNEL_PATCH=""
@@ -898,7 +898,7 @@ jobs:
 
           echo "===== CREATE EXYNOS9810-SAFE SUSFS PATCH ====="
           export KERNEL_PATCH
-          python3 - <<'PY' 2>&1 | tee susfs-kernel-filter-l18.log
+          python3 - <<'PY' 2>&1 | tee susfs-kernel-filter-l19.log
           from pathlib import Path
           import os
 
@@ -930,8 +930,8 @@ jobs:
               else:
                   kept.extend(chunk)
 
-          Path("susfs-kernel-auto-l18.patch").write_text("".join(kept))
-          Path("susfs-kernel-manual-l18.txt").write_text("\n".join(skipped) + "\n")
+          Path("susfs-kernel-auto-l19.patch").write_text("".join(kept))
+          Path("susfs-kernel-manual-l19.txt").write_text("\n".join(skipped) + "\n")
 
           print("Skipped manual-compat file patches:")
           for item in skipped:
@@ -940,8 +940,8 @@ jobs:
           PY
 
           echo "===== APPLY SUSFS KERNEL PATCH EXCEPT MANUAL-COMPAT FILES ====="
-          if patch -p1 --dry-run < susfs-kernel-auto-l18.patch 2>&1 | tee susfs-kernel-dryrun.log; then
-            patch -p1 < susfs-kernel-auto-l18.patch 2>&1 | tee susfs-kernel-apply.log
+          if patch -p1 --dry-run < susfs-kernel-auto-l19.patch 2>&1 | tee susfs-kernel-dryrun.log; then
+            patch -p1 < susfs-kernel-auto-l19.patch 2>&1 | tee susfs-kernel-apply.log
           else
             echo "ERROR: SuSFS kernel auto patch failed outside known Exynos9810 manual files." | tee -a susfs-kernel-dryrun.log
             find . \( -name "*.rej" -o -name "*.orig" \) -type f | sort | tee susfs-rejects.txt
@@ -949,7 +949,7 @@ jobs:
           fi
 
           echo "===== APPLY MANUAL EXYNOS9810 SUSFS COMPAT PATCHES ====="
-          python3 - <<'PY' 2>&1 | tee susfs-kernel-manual-exynos9810-l18.log
+          python3 - <<'PY' 2>&1 | tee susfs-kernel-manual-exynos9810-l19.log
           from pathlib import Path
 
           def read(path):
@@ -1072,51 +1072,51 @@ jobs:
               return text
 
           # Manual replacement for failed fs/readdir.c hunk #2.
-          readdir_include = "#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n/* SUSFS_EXYNOS9810_L18_READDIR_INCLUDE */\n#include <linux/cred.h>\n#include <linux/susfs.h>\n#endif\n"
-          add_guarded_include("fs/readdir.c", readdir_include, "SUSFS_EXYNOS9810_L18_READDIR_INCLUDE")
+          readdir_include = "#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n/* SUSFS_EXYNOS9810_L19_READDIR_INCLUDE */\n#include <linux/cred.h>\n#include <linux/susfs.h>\n#endif\n"
+          add_guarded_include("fs/readdir.c", readdir_include, "SUSFS_EXYNOS9810_L19_READDIR_INCLUDE")
 
-          filldir64_block = "\n#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n\t/* SUSFS_EXYNOS9810_L18_FILLDIR64 */\n\tif (likely(current_cred()->user->android_kabi_reserved1 & 16777216) && susfs_sus_ino_for_filldir64(ino)) {\n\t\treturn 0;\n\t}\n#endif\n"
+          filldir64_block = "\n#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n\t/* SUSFS_EXYNOS9810_L19_FILLDIR64 */\n\tif (likely(current_cred()->user->android_kabi_reserved1 & 16777216) && susfs_sus_ino_for_filldir64(ino)) {\n\t\treturn 0;\n\t}\n#endif\n"
           insert_after_marker_in_function(
               "fs/readdir.c",
               "static int filldir64(struct dir_context *ctx",
               "buf->error = -EINVAL;",
               filldir64_block,
-              "SUSFS_EXYNOS9810_L18_FILLDIR64",
+              "SUSFS_EXYNOS9810_L19_FILLDIR64",
           )
 
           # Manual replacement for failed include/linux/fs.h inode hunk.
-          inode_block = "#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT\n\t/* SUSFS_EXYNOS9810_L18_INODE_KABI */\n\tu64 android_kabi_reserved1;\n\tu64 android_kabi_reserved2;\n#endif\n"
+          inode_block = "#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT\n\t/* SUSFS_EXYNOS9810_L19_INODE_KABI */\n\tu64 android_kabi_reserved1;\n\tu64 android_kabi_reserved2;\n#endif\n"
           insert_inside_struct(
               "include/linux/fs.h",
               "inode",
               inode_block,
-              "SUSFS_EXYNOS9810_L18_INODE_KABI",
+              "SUSFS_EXYNOS9810_L19_INODE_KABI",
           )
 
           # The super_block hunk usually applied; keep this idempotent for vendor offsets.
-          super_block = "#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT\n\t/* SUSFS_EXYNOS9810_L18_SUPERBLOCK_KABI */\n\tu64 android_kabi_reserved1;\n\tu64 android_kabi_reserved2;\n\tu64 android_kabi_reserved3;\n#endif\n"
+          super_block = "#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT\n\t/* SUSFS_EXYNOS9810_L19_SUPERBLOCK_KABI */\n\tu64 android_kabi_reserved1;\n\tu64 android_kabi_reserved2;\n\tu64 android_kabi_reserved3;\n#endif\n"
           insert_inside_struct(
               "include/linux/fs.h",
               "super_block",
               super_block,
-              "SUSFS_EXYNOS9810_L18_SUPERBLOCK_KABI",
+              "SUSFS_EXYNOS9810_L19_SUPERBLOCK_KABI",
           )
 
           print("===== MANUAL SUSFS EXYNOS9810 MARKERS =====")
           for path in ["fs/readdir.c", "include/linux/fs.h"]:
               text = read(path)
               for token in [
-                  "SUSFS_EXYNOS9810_L18_READDIR_INCLUDE",
-                  "SUSFS_EXYNOS9810_L18_FILLDIR64",
-                  "SUSFS_EXYNOS9810_L18_INODE_KABI",
-                  "SUSFS_EXYNOS9810_L18_SUPERBLOCK_KABI",
+                  "SUSFS_EXYNOS9810_L19_READDIR_INCLUDE",
+                  "SUSFS_EXYNOS9810_L19_FILLDIR64",
+                  "SUSFS_EXYNOS9810_L19_INODE_KABI",
+                  "SUSFS_EXYNOS9810_L19_SUPERBLOCK_KABI",
               ]:
                   if token in text:
                       print(f"{path}: {token}")
           PY
 
           echo "===== VERIFY MANUAL SUSFS COMPAT PATCHES ====="
-          grep -RIn "SUSFS_EXYNOS9810_L18\|susfs_sus_ino_for_filldir64\|android_kabi_reserved" fs/readdir.c include/linux/fs.h | tee susfs-kernel-manual-verify-l18.log
+          grep -RIn "SUSFS_EXYNOS9810_L19\|susfs_sus_ino_for_filldir64\|android_kabi_reserved" fs/readdir.c include/linux/fs.h | tee susfs-kernel-manual-verify-l19.log
 
           echo "===== LOCATE KERNELSU NEXT ROOT ====="
           KSU_ROOT=""
@@ -1138,7 +1138,7 @@ jobs:
           export KSU_ROOT
 
           echo "===== MANUAL KSU NEXT SUSFS BRIDGE LEVEL 5 ====="
-          python3 - <<'PY' 2>&1 | tee susfs-bridge-l18.log
+          python3 - <<'PY' 2>&1 | tee susfs-bridge-l19.log
           from pathlib import Path
           import os
           import re
@@ -1258,16 +1258,16 @@ jobs:
           if not kbuild.exists():
               kbuild = kdir / "Makefile"
           btxt = read(kbuild)
-          if "KSU_NEXT_SUSFS_BRIDGE_L18" not in btxt:
+          if "KSU_NEXT_SUSFS_BRIDGE_L19" not in btxt:
               btxt += r'''
 
-          # KSU_NEXT_SUSFS_BRIDGE_L18
+          # KSU_NEXT_SUSFS_BRIDGE_L19
           ccflags-y += -I$(srctree)/include
           ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
           $(eval SUSFS_VERSION=$(shell grep -E '^#define SUSFS_VERSION' $(srctree)/include/linux/susfs.h 2>/dev/null | awk '{print $$3}' | tr -d '"'))
-          $(info -- KSU_NEXT_SUSFS_BRIDGE_L18: SUSFS_VERSION=$(SUSFS_VERSION))
+          $(info -- KSU_NEXT_SUSFS_BRIDGE_L19: SUSFS_VERSION=$(SUSFS_VERSION))
           else
-          $(info -- KSU_NEXT_SUSFS_BRIDGE_L18: fs/susfs.c missing)
+          $(info -- KSU_NEXT_SUSFS_BRIDGE_L19: fs/susfs.c missing)
           endif
           '''
               write(kbuild, btxt)
@@ -1277,23 +1277,23 @@ jobs:
 
           init = kdir / "core" / "init.c"
           itxt = read(init)
-          if "KSU_NEXT_SUSFS_BRIDGE_L18_INCLUDE" not in itxt:
+          if "KSU_NEXT_SUSFS_BRIDGE_L19_INCLUDE" not in itxt:
               lines = itxt.splitlines(True)
               pos = 0
               for i, line in enumerate(lines[:80]):
                   if line.lstrip().startswith("#include"):
                       pos = i + 1
-              inc = "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L18_INCLUDE */\n#include <linux/susfs.h>\nextern void susfs_init(void);\n#endif\n"
+              inc = "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L19_INCLUDE */\n#include <linux/susfs.h>\nextern void susfs_init(void);\n#endif\n"
               lines.insert(pos, inc)
               itxt = "".join(lines)
-          if "KSU_NEXT_SUSFS_BRIDGE_L18_INIT" not in itxt:
+          if "KSU_NEXT_SUSFS_BRIDGE_L19_INIT" not in itxt:
               m = re.search(r"int\s+__init\s+kernelsu_init\s*\([^)]*\)\s*\{", itxt)
               if not m:
                   raise SystemExit("ERROR: kernelsu_init() not found in core/init.c")
-              insert = "\n#ifdef CONFIG_KSU_SUSFS\n\t/* KSU_NEXT_SUSFS_BRIDGE_L18_INIT */\n\textern void susfs_init(void);\n\tpr_info(\"susfs: init from KernelSU-Next bridge L18\\n\");\n\tsusfs_init();\n#endif\n"
+              insert = "\n#ifdef CONFIG_KSU_SUSFS\n\t/* KSU_NEXT_SUSFS_BRIDGE_L19_INIT */\n\textern void susfs_init(void);\n\tpr_info(\"susfs: init from KernelSU-Next bridge L19\\n\");\n\tsusfs_init();\n#endif\n"
               itxt = itxt[:m.end()] + insert + itxt[m.end():]
           write(init, itxt)
-          # KSU_NEXT_SUSFS_BRIDGE_L18_LOCAL_PROTO_FIX
+          # KSU_NEXT_SUSFS_BRIDGE_L19_LOCAL_PROTO_FIX
           itxt = read(init)
           fn_pos = itxt.rfind("int __init kernelsu_init", 0, itxt.find("susfs_init();") if "susfs_init();" in itxt else len(itxt))
           call_pos = itxt.find("susfs_init();", fn_pos if fn_pos >= 0 else 0)
@@ -1307,21 +1307,21 @@ jobs:
 
           dispatch = kdir / "supercall" / "dispatch.c"
           dtxt = read(dispatch)
-          if "KSU_NEXT_SUSFS_BRIDGE_L18_INCLUDE" not in dtxt:
+          if "KSU_NEXT_SUSFS_BRIDGE_L19_INCLUDE" not in dtxt:
               lines = dtxt.splitlines(True)
               pos = 0
               for i, line in enumerate(lines[:120]):
                   if line.lstrip().startswith("#include"):
                       pos = i + 1
-              inc = "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L18_INCLUDE */\n#include <linux/susfs.h>\n#include <linux/uaccess.h>\n#endif\n"
+              inc = "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L19_INCLUDE */\n#include <linux/susfs.h>\n#include <linux/uaccess.h>\n#endif\n"
               lines.insert(pos, inc)
               dtxt = "".join(lines)
 
-          if "KSU_NEXT_SUSFS_BRIDGE_L18_HANDLERS" not in dtxt:
+          if "KSU_NEXT_SUSFS_BRIDGE_L19_HANDLERS" not in dtxt:
               handler = r'''
 
           #ifdef CONFIG_KSU_SUSFS
-          /* KSU_NEXT_SUSFS_BRIDGE_L18_HANDLERS */
+          /* KSU_NEXT_SUSFS_BRIDGE_L19_HANDLERS */
           bool susfs_is_allow_su(void)
           {
           	if (is_manager())
@@ -1433,17 +1433,17 @@ jobs:
 
           kumount = kdir / "feature" / "kernel_umount.c"
           utxt = read(kumount)
-          if "KSU_NEXT_SUSFS_BRIDGE_L18_INCLUDE" not in utxt:
+          if "KSU_NEXT_SUSFS_BRIDGE_L19_INCLUDE" not in utxt:
               lines = utxt.splitlines(True)
               pos = 0
               for i, line in enumerate(lines[:100]):
                   if line.lstrip().startswith("#include"):
                       pos = i + 1
-              lines.insert(pos, "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L18_INCLUDE */\n#include <linux/susfs.h>\n#endif\n")
+              lines.insert(pos, "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L19_INCLUDE */\n#include <linux/susfs.h>\n#endif\n")
               utxt = "".join(lines)
-          if "KSU_NEXT_SUSFS_BRIDGE_L18_TRY_UMOUNT_CALL" not in utxt:
+          if "KSU_NEXT_SUSFS_BRIDGE_L19_TRY_UMOUNT_CALL" not in utxt:
               marker = "pr_info(\"handle umount for uid: %d, pid: %d\\n\", new_uid, current->pid);"
-              call = "\n#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT\n\t/* KSU_NEXT_SUSFS_BRIDGE_L18_TRY_UMOUNT_CALL */\n\tsusfs_try_umount(new_uid);\n#endif"
+              call = "\n#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT\n\t/* KSU_NEXT_SUSFS_BRIDGE_L19_TRY_UMOUNT_CALL */\n\tsusfs_try_umount(new_uid);\n#endif"
               if marker in utxt:
                   utxt = utxt.replace(marker, marker + call, 1)
               else:
@@ -1453,7 +1453,7 @@ jobs:
 
           rules = kdir / "selinux" / "rules.c"
           rtxt = read(rules)
-          # KSU_NEXT_SUSFS_BRIDGE_L18_SEPOLICY_SAFE_SKIP
+          # KSU_NEXT_SUSFS_BRIDGE_L19_SEPOLICY_SAFE_SKIP
           # Do not inject a standalone ksu_allow() line into rules.c.
           # On this KernelSU-Next legacy layout, inserting near rcu_read_unlock()
           # can land outside apply_kernelsu_rules_fn() and causes:
@@ -1461,7 +1461,7 @@ jobs:
           # SuSFS can build without this optional zygote labeledfs allow rule.
           broken = (
               "\n#ifdef CONFIG_KSU_SUSFS\n"
-              "\t/* KSU_NEXT_SUSFS_BRIDGE_L18_SEPOLICY */\n"
+              "\t/* KSU_NEXT_SUSFS_BRIDGE_L19_SEPOLICY */\n"
               "\tksu_allow(db, \"zygote\", \"labeledfs\", \"filesystem\", \"unmount\");\n"
               "#endif\n"
           )
@@ -1470,12 +1470,12 @@ jobs:
               write(rules, rtxt)
               print(f"[FIX] {rules}: removed unsafe standalone zygote labeledfs allow block")
           else:
-              print(f"[SKIP] {rules}: skipped optional zygote labeledfs allow for compile-safe L18")
+              print(f"[SKIP] {rules}: skipped optional zygote labeledfs allow for compile-safe L19")
 
           print("===== BRIDGE MARKERS =====")
           for f in [kconfig, kbuild, init, dispatch, kumount, rules]:
               t = read(f)
-              print(f"{f}: KSU_NEXT_SUSFS_BRIDGE_L18={t.count('KSU_NEXT_SUSFS_BRIDGE_L18')}, config KSU_SUSFS={t.count('config KSU_SUSFS')}, CONFIG_KSU_SUSFS={t.count('CONFIG_KSU_SUSFS')}")
+              print(f"{f}: KSU_NEXT_SUSFS_BRIDGE_L19={t.count('KSU_NEXT_SUSFS_BRIDGE_L19')}, config KSU_SUSFS={t.count('config KSU_SUSFS')}, CONFIG_KSU_SUSFS={t.count('CONFIG_KSU_SUSFS')}")
           PY
 
           echo "===== VERIFY SUSFS SOURCE INTEGRATION ====="
@@ -1489,7 +1489,7 @@ jobs:
             ls -lah fs/susfs.c include/linux/susfs.h include/linux/sus_su.h fs/sus_su.c 2>/dev/null || true
             echo ""
             echo "--- KernelSU Next SuSFS bridge markers ---"
-            grep -RIn "KSU_NEXT_SUSFS_BRIDGE_L18\|CONFIG_KSU_SUSFS\|config KSU_SUSFS\|CMD_SUSFS\|susfs" "$KSU_ROOT/kernel" drivers/kernelsu fs include/linux 2>/dev/null | head -500 || true
+            grep -RIn "KSU_NEXT_SUSFS_BRIDGE_L19\|CONFIG_KSU_SUSFS\|config KSU_SUSFS\|CMD_SUSFS\|susfs" "$KSU_ROOT/kernel" drivers/kernelsu fs include/linux 2>/dev/null | head -500 || true
             echo ""
             echo "--- KernelSU Kconfig SuSFS lines ---"
             grep -n "KSU_SUSFS" "$KSU_ROOT/kernel/Kconfig" || true
@@ -1538,228 +1538,22 @@ jobs:
             exit 1
           fi
 
-          echo "SuSFS bridge level 18 source integration passed."
+          echo "SuSFS bridge level 15 source integration passed."
 
 
-      - name: Patch ksud exec permission policy L18
+      - name: Verify KernelSU Next integration v33
         shell: bash
         working-directory: kernel
         run: |
           set -e
 
-          echo "===== PATCH KSUD DEEP EXEC PERMISSION POLICY L18 ====="
-
-          if [ -z "${KSU_ROOT:-}" ]; then
-            for CANDIDATE in KernelSU-Next KernelSU; do
-              if [ -d "$CANDIDATE/kernel" ]; then
-                KSU_ROOT="$CANDIDATE"
-                break
-              fi
-            done
-          fi
-
-          if [ -z "${KSU_ROOT:-}" ] || [ ! -d "$KSU_ROOT/kernel" ]; then
-            echo "ERROR: KSU_ROOT not found"
-            find . -maxdepth 4 -type d | sort | sed -n '1,180p'
-            exit 1
-          fi
-
-          echo "KSU_ROOT=$KSU_ROOT" | tee ksud-execfix-l18.log
-          export KSU_ROOT
-
-          python3 - <<'PY' 2>&1 | tee -a ksud-execfix-l18.log
-          from pathlib import Path
-          import os
-
-          ksu_root = Path(os.environ.get("KSU_ROOT", "KernelSU-Next"))
-          candidates = [
-              ksu_root / "kernel" / "selinux" / "rules.c",
-              Path("drivers/kernelsu/selinux/rules.c"),
-          ]
-          rules = next((p for p in candidates if p.exists()), None)
-          if rules is None:
-              raise SystemExit("ERROR: KernelSU SELinux rules.c not found")
-
-          text = rules.read_text(errors="ignore")
-          old_markers = ["KSU_NEXT_KSUD_EXECFIX_L16"]
-          for old in old_markers:
-              if old in text:
-                  print(f"[INFO] Old marker {old} found; keeping it and adding L18 broader rules")
-
-          marker = "KSU_NEXT_KSUD_DEEP_EXECFIX_L18"
-
-          block = r"""
-          #ifdef CONFIG_KSU
-          	/* KSU_NEXT_KSUD_DEEP_EXECFIX_L18
-          	 * Samsung Android 10 labels /data/adb and /data/adb/ksud as adb_data_file.
-          	 * init launches ksud with context u:r:ksu:s0. Some builds still deny execve
-          	 * unless ksu/init can search /data, read/map/execute adb_data_file, and execute_no_trans.
-          	 */
-          	ksu_allow(db, "ksu", "system_data_file", "dir", "getattr");
-          	ksu_allow(db, "ksu", "system_data_file", "dir", "search");
-          	ksu_allow(db, "ksu", "adb_data_file", "dir", "getattr");
-          	ksu_allow(db, "ksu", "adb_data_file", "dir", "search");
-          	ksu_allow(db, "ksu", "adb_data_file", "dir", "read");
-          	ksu_allow(db, "ksu", "adb_data_file", "dir", "open");
-          	ksu_allow(db, "ksu", "adb_data_file", "file", "getattr");
-          	ksu_allow(db, "ksu", "adb_data_file", "file", "read");
-          	ksu_allow(db, "ksu", "adb_data_file", "file", "open");
-          	ksu_allow(db, "ksu", "adb_data_file", "file", "map");
-          	ksu_allow(db, "ksu", "adb_data_file", "file", "execute");
-          	ksu_allow(db, "ksu", "adb_data_file", "file", "execute_no_trans");
-          	ksu_allow(db, "ksu", "adb_data_file", "file", "entrypoint");
-          	ksu_allow(db, "ksu", "adb_data_file", "lnk_file", "getattr");
-          	ksu_allow(db, "ksu", "adb_data_file", "lnk_file", "read");
-          	ksu_allow(db, "init", "system_data_file", "dir", "getattr");
-          	ksu_allow(db, "init", "system_data_file", "dir", "search");
-          	ksu_allow(db, "init", "adb_data_file", "dir", "getattr");
-          	ksu_allow(db, "init", "adb_data_file", "dir", "search");
-          	ksu_allow(db, "init", "adb_data_file", "dir", "read");
-          	ksu_allow(db, "init", "adb_data_file", "dir", "open");
-          	ksu_allow(db, "init", "adb_data_file", "file", "getattr");
-          	ksu_allow(db, "init", "adb_data_file", "file", "read");
-          	ksu_allow(db, "init", "adb_data_file", "file", "open");
-          	ksu_allow(db, "init", "adb_data_file", "file", "map");
-          	ksu_allow(db, "init", "adb_data_file", "file", "execute");
-          	ksu_allow(db, "init", "adb_data_file", "file", "execute_no_trans");
-          	ksu_allow(db, "init", "adb_data_file", "file", "entrypoint");
-          	ksu_allow(db, "init", "adb_data_file", "lnk_file", "getattr");
-          	ksu_allow(db, "init", "adb_data_file", "lnk_file", "read");
-          	/* In case Samsung init still checks/sets process attrs while spawning ksud. */
-          	ksu_allow(db, "ksu", "init", "process", "sigchld");
-          	ksu_allow(db, "init", "ksu", "process", "sigchld");
-          #endif
-          """
-
-          if marker in text:
-              print(f"[OK] {rules}: {marker} already present")
-          else:
-              lines = text.splitlines(True)
-              seen_fn = False
-              insert_at = None
-              for i, line in enumerate(lines):
-                  if "apply_kernelsu_rules_fn" in line:
-                      seen_fn = True
-                  if seen_fn and "struct policydb" in line and "*db" in line and ";" in line:
-                      insert_at = i + 1
-                      break
-
-              if insert_at is None:
-                  raise SystemExit("ERROR: could not locate policydb db line inside apply_kernelsu_rules_fn")
-
-              lines.insert(insert_at, block + "\n")
-              rules.write_text("".join(lines))
-              print(f"[PATCH] {rules}: inserted {marker} policy block after policydb db declaration")
-
-          print("===== KSUD DEEP EXECFIX PREVIEW =====")
-          preview = rules.read_text(errors="ignore").splitlines()
-          for i, line in enumerate(preview, start=1):
-              if marker in line or "adb_data_file" in line or "system_data_file" in line:
-                  print(f"{i}: {line}")
-          PY
-
-          echo "===== VERIFY KSUD EXECFIX L18 =====" | tee ksud-execfix-l18-verify.log
-          grep -RIn "KSU_NEXT_KSUD_DEEP_EXECFIX_L18\|adb_data_file\|system_data_file" "$KSU_ROOT/kernel/selinux/rules.c" drivers/kernelsu/selinux/rules.c 2>/dev/null | tee -a ksud-execfix-l18-verify.log || true
-
-      - name: Patch KernelSU ksud init exec bypass L18
-        shell: bash
-        working-directory: kernel
-        run: |
-          set -e
-
-          echo "===== PATCH KSUD INIT EXEC BYPASS L18 ====="
-          echo "Purpose: keep v32 root/SuSFS stable, but stop init from repeatedly execve('/data/adb/ksud') when Samsung SELinux/noexec blocks it."
-          echo "This only changes KernelSU boot-stage user-service path to /system/bin/true. Kernel root and SuSFS stay untouched."
-
-          if [ -z "${KSU_ROOT:-}" ]; then
-            for CANDIDATE in KernelSU-Next KernelSU; do
-              if [ -d "$CANDIDATE/kernel" ]; then
-                KSU_ROOT="$CANDIDATE"
-                break
-              fi
-            done
-          fi
-
-          if [ -z "${KSU_ROOT:-}" ] || [ ! -d "$KSU_ROOT/kernel" ]; then
-            echo "ERROR: KSU_ROOT not found"
-            find . -maxdepth 4 -type d | sort | sed -n '1,180p'
-            exit 1
-          fi
-
-          echo "KSU_ROOT=$KSU_ROOT" | tee ksud-noinit-l18.log
-          export KSU_ROOT
-
-          python3 - <<'PY' 2>&1 | tee -a ksud-noinit-l18.log
-          from pathlib import Path
-          import os
-          import re
-
-          ksu_root = Path(os.environ.get("KSU_ROOT", "KernelSU-Next"))
-          roots = [ksu_root / "kernel", Path("drivers/kernelsu")]
-          files = []
-          for root in roots:
-              if root.exists():
-                  files.extend([p for p in root.rglob("*") if p.suffix in {".c", ".h", ".cpp", ".hpp"}])
-
-          changed = []
-          searched = []
-          marker = "KSU_NEXT_KSUD_NOINIT_EXEC_L18"
-
-          for p in files:
-              try:
-                  text = p.read_text(errors="ignore")
-              except Exception:
-                  continue
-              if "ksud" not in text and "/data/adb" not in text and "post-fs-data" not in text and "boot-completed" not in text:
-                  continue
-              searched.append(str(p))
-              old = text
-
-              # Preferred case: KernelSU stores an absolute ksud path string.
-              text = text.replace('/data/adb/ksud', '/system/bin/true')
-
-              # Common macro patterns. Keep same length constraints irrelevant because this is source-level build.
-              text = re.sub(r'(#\s*define\s+KSUD_PATH\s+)"[^"]+"', r'\1"/system/bin/true"', text)
-              text = re.sub(r'(static\s+(?:const\s+)?char\s+\*\s*(?:const\s+)?\w*ksud\w*\s*=\s*)"[^"]+"', r'\1"/system/bin/true"', text, flags=re.I)
-              text = re.sub(r'(const\s+char\s+\*\s*(?:const\s+)?\w*ksud\w*\s*=\s*)"[^"]+"', r'\1"/system/bin/true"', text, flags=re.I)
-
-              # If a file now uses true as the ksud path, add a marker comment once.
-              if text != old and marker not in text:
-                  text = f"/* {marker}: ksud init exec path redirected to /system/bin/true; root/SuSFS core unchanged. */\n" + text
-
-              if text != old:
-                  p.write_text(text)
-                  changed.append(str(p))
-
-          print("===== KSUD NOINIT EXEC PATCH RESULT =====")
-          print("searched files with ksud markers:")
-          for item in searched[:200]:
-              print("  " + item)
-          print("changed files:")
-          for item in changed:
-              print("  " + item)
-
-          if not changed:
-              print("[WARN] No source file contained literal /data/adb/ksud or KSUD_PATH. Build continues unchanged.")
-              print("[WARN] If dmesg still shows ksud Permission denied, use v31/v32 as stable SuSFS and ignore ksud user-service, or gather runtime source file names.")
-          PY
-
-          echo "===== VERIFY KSUD NOINIT L18 =====" | tee ksud-noinit-l18-verify.log
-          grep -RIn "KSU_NEXT_KSUD_NOINIT_EXEC_L18\|/system/bin/true\|/data/adb/ksud\|post-fs-data\|boot-completed" "$KSU_ROOT/kernel" drivers/kernelsu 2>/dev/null | head -240 | tee -a ksud-noinit-l18-verify.log || true
-
-      - name: Verify KernelSU Next integration v32
-        shell: bash
-        working-directory: kernel
-        run: |
-          set -e
-
-          echo "===== VERIFY KERNELSU NEXT INTEGRATION v32 ====="
+          echo "===== VERIFY KERNELSU NEXT INTEGRATION v33 ====="
 
           {
             echo "Device: ${DEVICE}"
             echo "Model: ${MODEL_NAME}"
             echo "Android: ${PLATFORM_VERSION}/${ANDROID_MAJOR_VERSION}"
-            echo "Kernel release target: 4.9.220-G960NK-v32-ksunext-susfs-ksudnoinit-l18"
+            echo "Kernel release target: 4.9.220-G960NK-v33-ksunext-susfs-stable-restore-l19"
             echo ""
           } > ksu-next-build-info.txt
 
@@ -1811,8 +1605,8 @@ jobs:
           echo ""
           echo "===== KSU MARKERS PREVIEW =====" | tee -a ksu-next-build-info.txt
           grep -RIn "CONFIG_KSU\|KSU_NEXT_MANUAL_HOOK\|KSU_NEXT_BACKPORT_PATH_UMOUNT\|ksu_handle_sys_reboot\|path_umount" \
-            Kconfig Makefile drivers fs kernel 2>/dev/null > ksu-next-markers-v32.txt || true
-          sed -n '1,260p' ksu-next-markers-v32.txt | tee -a ksu-next-build-info.txt || true
+            Kconfig Makefile drivers fs kernel 2>/dev/null > ksu-next-markers-v33.txt || true
+          sed -n '1,260p' ksu-next-markers-v33.txt | tee -a ksu-next-build-info.txt || true
 
           if ! grep -q "ksu_handle_sys_reboot" kernel/reboot.c; then
             echo "ERROR: reboot manual hook is missing"
@@ -1824,7 +1618,7 @@ jobs:
             exit 1
           fi
 
-          echo "KernelSU Next v32 source verification passed."
+          echo "KernelSU Next v33 source verification passed."
 
 
       - name: Prepare defconfig
@@ -1857,7 +1651,7 @@ jobs:
 
           cat >> "$TEMP_CONFIG" <<'EOF'
 
-          # KernelSU Next official legacy v32 SuSFS Bridge L18 manual hook
+          # KernelSU Next official legacy v33 SuSFS Bridge L19 manual hook
           CONFIG_KSU=y
           CONFIG_KSU_MANUAL_HOOK=y
           # CONFIG_KSU_KPROBES_HOOK is not set
@@ -2023,7 +1817,7 @@ jobs:
           } > KernelSU-config.txt
           {
             echo "===== SuSFS build info snapshot ====="
-            echo "workflow=v32-ksunext-susfs-ksudnoinit-l18"
+            echo "workflow=v33-ksunext-susfs-stable-restore-l19"
             echo "date=$(date -u)"
             echo "DEVICE=${DEVICE:-unknown}"
             echo "MODEL_NAME=${MODEL_NAME:-unknown}"
@@ -2034,7 +1828,7 @@ jobs:
             ls -lah susfs-*.log susfs-*.txt 2>/dev/null || true
             echo ""
             echo "--- susfs markers ---"
-            grep -RIn "KSU_NEXT_SUSFS_BRIDGE_L18|CONFIG_KSU_SUSFS|config KSU_SUSFS|CMD_SUSFS|susfs" KernelSU-Next drivers/kernelsu fs include/linux 2>/dev/null | head -500 || true
+            grep -RIn "KSU_NEXT_SUSFS_BRIDGE_L19|CONFIG_KSU_SUSFS|config KSU_SUSFS|CMD_SUSFS|susfs" KernelSU-Next drivers/kernelsu fs include/linux 2>/dev/null | head -500 || true
           } > SuSFS-build-info.txt
           ls -lah build.log KernelSU-config.txt SuSFS-build-info.txt || true
 
@@ -2042,7 +1836,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v32-ksunext-susfs-ksudnoinit-l18
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v33-ksunext-susfs-stable-restore-l19
           path: |
             kernel/*.log
             kernel/*.txt
@@ -2103,9 +1897,7 @@ jobs:
           cp -av SuSFS-build-info.txt "$OUT_DIR/SuSFS-build-info.txt" 2>/dev/null || true
           cp -av susfs-*.log "$OUT_DIR/" 2>/dev/null || true
           cp -av susfs-*.txt "$OUT_DIR/" 2>/dev/null || true
-          cp -av ksud-execfix-*.log "$OUT_DIR/" 2>/dev/null || true
-          cp -av ksud-noinit-*.log "$OUT_DIR/" 2>/dev/null || true
-          cp -av ksu-next-markers-v32.txt "$OUT_DIR/KernelSU-Next-markers-v32.txt" 2>/dev/null || true
+          cp -av ksu-next-markers-v33.txt "$OUT_DIR/KernelSU-Next-markers-v33.txt" 2>/dev/null || true
           grep -RIn "KSU_NEXT_MANUAL_HOOK\|ksu_handle_sys_reboot\|ksu_handle_execveat\|ksu_handle_faccessat\|ksu_handle_sys_read\|ksu_handle_stat" fs/exec.c fs/open.c fs/read_write.c fs/stat.c kernel/reboot.c > "$OUT_DIR/KernelSU-manual-hooks.txt" 2>/dev/null || true
           grep -RIn "KSU_NEXT_BACKPORT_PATH_UMOUNT\|int path_umount(struct path \*path, int flags)\|ksu_next_can_umount" fs/namespace.c fs/internal.h > "$OUT_DIR/KernelSU-path-umount.txt" 2>/dev/null || true
           grep -RIn "CONFIG_KSU_SUSFS\|SUSFS\|susfs" fs include/linux KernelSU-Next drivers/kernelsu 2>/dev/null > "$OUT_DIR/SuSFS-markers.txt" || true
@@ -2130,7 +1922,7 @@ jobs:
           RAW_DIR="$OUT_DIR/raw"
           AK_DIR="$GITHUB_WORKSPACE/AnyKernel3"
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
-          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-OneUI2.5-Q-v32-ksunext-susfs-ksudnoinit-l18-${SHORT_SHA}.zip"
+          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-OneUI2.5-Q-v33-ksunext-susfs-stable-restore-l19-${SHORT_SHA}.zip"
 
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 "$AK_DIR"
 
@@ -2149,7 +1941,7 @@ jobs:
             "## Target: Samsung Galaxy S9 ${MODEL_NAME} / ${DEVICE} / One UI 2.5 Android 10" \
             "" \
             "properties() { '" \
-            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} OneUI2.5 Android10 Q v32 KernelSU Next SuSFS ksud NoInitExec L18" \
+            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} OneUI2.5 Android10 Q v33 KernelSU Next SuSFS Stable Restore L19" \
             "do.devicecheck=1" \
             "do.modules=0" \
             "do.systemless=1" \
@@ -2198,7 +1990,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v32-ksunext-susfs-ksudnoinit-l18
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v33-ksunext-susfs-stable-restore-l19
           path: |
             out/*.zip
             out/raw/*
@@ -2209,10 +2001,9 @@ jobs:
             out/SuSFS-*.txt
             out/susfs-*.log
             out/susfs-*.txt
-            out/ksud-execfix-*.log
             out/KernelSU-manual-hooks.txt
             out/KernelSU-path-umount.txt
             out/KernelSU-Next-build-info.txt
-            out/KernelSU-Next-markers-v32.txt
+            out/KernelSU-Next-markers-v33.txt
           if-no-files-found: error
           compression-level: 6
