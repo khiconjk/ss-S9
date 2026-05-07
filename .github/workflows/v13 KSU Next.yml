@@ -1,4 +1,4 @@
-name: v12 KSU Next Manual Hook
+name: v13 KSU Next Manual Hook
 
 "on":
   workflow_dispatch:
@@ -190,7 +190,7 @@ jobs:
           echo "Clean done" | tee -a clean.log
 
 
-      - name: Patch kernel release to G960NK v12 KSU Next Manual Hook
+      - name: Patch kernel release to G960NK v13 KSU Next Manual Hook
         shell: bash
         working-directory: kernel
         run: |
@@ -209,9 +209,9 @@ jobs:
           text = re.sub(r"^SUBLEVEL\s*=\s*.*$", "SUBLEVEL = 220", text, flags=re.MULTILINE)
 
           if re.search(r"^EXTRAVERSION\s*=", text, flags=re.MULTILINE):
-              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v12-ksunext-manual", text, flags=re.MULTILINE)
+              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v13-ksunext-manual", text, flags=re.MULTILINE)
           else:
-              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v12-ksunext-manual", 1)
+              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v13-ksunext-manual", 1)
 
           makefile.write_text(text)
           PY
@@ -219,7 +219,7 @@ jobs:
           echo "===== AFTER VERSION PATCH ====="
           grep -nE "^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)[[:space:]]*=" Makefile || true
 
-          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v12-ksunext-manual"
+          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v13-ksunext-manual"
 
 
       - name: Patch clang external assembler prefix
@@ -644,6 +644,115 @@ jobs:
             fs/exec.c fs/open.c fs/read_write.c fs/stat.c kernel/reboot.c 2>/dev/null || true
 
 
+
+      - name: Backport path_umount for KernelSU Next
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          echo "===== BACKPORT path_umount FOR KERNELSU NEXT v13 ====="
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          ns = Path("fs/namespace.c")
+          internal = Path("fs/internal.h")
+
+          if not ns.exists():
+              raise SystemExit("ERROR: fs/namespace.c not found")
+
+          text = ns.read_text(errors="ignore")
+
+          if "KSU_NEXT_BACKPORT_PATH_UMOUNT" in text or "int path_umount(struct path *path, int flags)" in text:
+              print("[OK] fs/namespace.c already has path_umount backport")
+          else:
+              marker = "static bool is_mnt_ns_file(struct dentry *dentry)"
+              if marker not in text:
+                  raise SystemExit("ERROR: marker not found in fs/namespace.c: static bool is_mnt_ns_file")
+
+              block = '''
+          /*
+           * KSU_NEXT_BACKPORT_PATH_UMOUNT
+           *
+           * Linux 4.9 does not provide path_umount(), but KernelSU Next expects it.
+           * Backport a minimal wrapper using the existing do_umount() path from this
+           * kernel tree. This mirrors newer VFS behavior closely enough for KSU Next.
+           */
+          #ifdef CONFIG_KSU
+          static int ksu_next_can_umount(const struct path *path, int flags)
+          {
+          	struct mount *mnt = real_mount(path->mnt);
+
+          	if (flags & ~(MNT_FORCE | MNT_DETACH | MNT_EXPIRE | UMOUNT_NOFOLLOW))
+          		return -EINVAL;
+          	if (!may_mount())
+          		return -EPERM;
+          	if (path->dentry != path->mnt->mnt_root)
+          		return -EINVAL;
+          	if (!check_mnt(mnt))
+          		return -EINVAL;
+          	if (mnt->mnt.mnt_flags & MNT_LOCKED)
+          		return -EINVAL;
+          	if ((flags & MNT_FORCE) && !capable(CAP_SYS_ADMIN))
+          		return -EPERM;
+
+          	return 0;
+          }
+
+          int path_umount(struct path *path, int flags)
+          {
+          	struct mount *mnt = real_mount(path->mnt);
+          	int ret;
+
+          	ret = ksu_next_can_umount(path, flags);
+          	if (!ret)
+          		ret = do_umount(mnt, flags);
+
+          	dput(path->dentry);
+          	mntput_no_expire(mnt);
+
+          	return ret;
+          }
+          #endif /* CONFIG_KSU */
+
+          '''
+              text = text.replace(marker, block + marker, 1)
+              ns.write_text(text)
+              print("[PATCH] fs/namespace.c: added CONFIG_KSU path_umount backport")
+
+          if internal.exists():
+              itext = internal.read_text(errors="ignore")
+              proto = "int path_umount(struct path *path, int flags);"
+              if proto in itext:
+                  print("[OK] fs/internal.h already has path_umount prototype")
+              else:
+                  marker2 = "extern void __init mnt_init(void);"
+                  if marker2 in itext:
+                      itext = itext.replace(marker2, marker2 + "\n#ifdef CONFIG_KSU\n" + proto + "\n#endif", 1)
+                  else:
+                      itext += "\n#ifdef CONFIG_KSU\n" + proto + "\n#endif\n"
+                  internal.write_text(itext)
+                  print("[PATCH] fs/internal.h: added path_umount prototype")
+          else:
+              print("[WARN] fs/internal.h not found; skipping prototype")
+
+          verify = ns.read_text(errors="ignore")
+          required = ["do_umount(", "check_mnt(", "may_mount(", "mntput_no_expire("]
+          missing = [item for item in required if item not in verify]
+          if missing:
+              print("[WARN] fs/namespace.c may be missing symbols used by backport:", ", ".join(missing))
+          else:
+              print("[OK] fs/namespace.c contains do_umount/check_mnt/may_mount/mntput_no_expire")
+
+          if "int path_umount(struct path *path, int flags)" not in verify:
+              raise SystemExit("ERROR: path_umount backport missing after patch")
+          PY
+
+          echo "===== VERIFY path_umount PATCH ====="
+          grep -RIn "KSU_NEXT_BACKPORT_PATH_UMOUNT\|int path_umount(struct path \*path, int flags)\|ksu_next_can_umount" fs/namespace.c fs/internal.h 2>/dev/null || true
+
+
       - name: Prepare defconfig
         shell: bash
         working-directory: kernel
@@ -842,6 +951,7 @@ jobs:
           cp -av olddefconfig.log "$OUT_DIR/olddefconfig.log" || true
           cp -av build.log "$OUT_DIR/build.log" || true
           grep -RIn "KSU_NEXT_MANUAL_HOOK\|ksu_handle_sys_reboot\|ksu_handle_execveat\|ksu_handle_faccessat\|ksu_handle_sys_read\|ksu_handle_stat" fs/exec.c fs/open.c fs/read_write.c fs/stat.c kernel/reboot.c > "$OUT_DIR/KernelSU-manual-hooks.txt" 2>/dev/null || true
+          grep -RIn "KSU_NEXT_BACKPORT_PATH_UMOUNT\|int path_umount(struct path \*path, int flags)\|ksu_next_can_umount" fs/namespace.c fs/internal.h > "$OUT_DIR/KernelSU-path-umount.txt" 2>/dev/null || true
           cp -av .config "$OUT_DIR/kernel.config" || true
           for KSU_CANDIDATE in KernelSU-Next KernelSU drivers/kernelsu kernel/kernelsu; do
             if [ -e "$KSU_CANDIDATE" ]; then
@@ -863,7 +973,7 @@ jobs:
           RAW_DIR="$OUT_DIR/raw"
           AK_DIR="$GITHUB_WORKSPACE/AnyKernel3"
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
-          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-OneUI2.5-Q-v12-ksunext-manual-${SHORT_SHA}.zip"
+          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-OneUI2.5-Q-v13-ksunext-manual-${SHORT_SHA}.zip"
 
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 "$AK_DIR"
 
@@ -882,7 +992,7 @@ jobs:
             "## Target: Samsung Galaxy S9 ${MODEL_NAME} / ${DEVICE} / One UI 2.5 Android 10" \
             "" \
             "properties() { '" \
-            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} OneUI2.5 Android10 Q v12 KernelSU Next Manual" \
+            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} OneUI2.5 Android10 Q v13 KernelSU Next Manual" \
             "do.devicecheck=1" \
             "do.modules=0" \
             "do.systemless=1" \
@@ -931,7 +1041,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v12-ksunext-manual
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v13-ksunext-manual
           path: |
             out/*.zip
             out/raw/*
@@ -940,5 +1050,6 @@ jobs:
             out/modules-*
             out/KernelSU-*.txt
             out/KernelSU-manual-hooks.txt
+            out/KernelSU-path-umount.txt
           if-no-files-found: error
           compression-level: 6
