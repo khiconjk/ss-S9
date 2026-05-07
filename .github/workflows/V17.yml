@@ -1,4 +1,4 @@
-name: v15 KSU Next + SuSFS L1
+name: v17 KSU Next + SuSFS Bridge L3
 
 "on":
   workflow_dispatch:
@@ -193,7 +193,7 @@ jobs:
           echo "Clean done" | tee -a clean.log
 
 
-      - name: Patch kernel release to G960NK v15 KSU Next + SuSFS L1
+      - name: Patch kernel release to G960NK v17 KSU Next + SuSFS Bridge L3
         shell: bash
         working-directory: kernel
         run: |
@@ -212,9 +212,9 @@ jobs:
           text = re.sub(r"^SUBLEVEL\s*=\s*.*$", "SUBLEVEL = 220", text, flags=re.MULTILINE)
 
           if re.search(r"^EXTRAVERSION\s*=", text, flags=re.MULTILINE):
-              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v15-ksunext-susfs-l1", text, flags=re.MULTILINE)
+              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v17-ksunext-susfs-l3", text, flags=re.MULTILINE)
           else:
-              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v15-ksunext-susfs-l1", 1)
+              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v17-ksunext-susfs-l3", 1)
 
           makefile.write_text(text)
           PY
@@ -222,7 +222,7 @@ jobs:
           echo "===== AFTER VERSION PATCH ====="
           grep -nE "^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)[[:space:]]*=" Makefile || true
 
-          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v15-ksunext-susfs-l1"
+          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v17-ksunext-susfs-l3"
 
 
       - name: Patch clang external assembler prefix
@@ -757,16 +757,17 @@ jobs:
 
 
 
-      - name: Add SuSFS 4.9 patches level 1
+      - name: Add SuSFS 4.9 patches bridge level 3
         shell: bash
         working-directory: kernel
         run: |
           set -eo pipefail
 
-          echo "===== ADD SUSFS LEVEL 1 FOR EXYNOS9810 KERNEL 4.9 ====="
+          echo "===== ADD SUSFS BRIDGE LEVEL 3 FOR EXYNOS9810 KERNEL 4.9 ====="
+          echo "This workflow must NOT create susfs-ksunext-dryrun.log or susfs-ksu-fallback-dryrun.log; those belong to old v15."
           rm -rf susfs4ksu
-          rm -f susfs-*.log susfs-*.txt
-          find . -name "*.rej" -o -name "*.orig" | xargs -r rm -f
+          rm -f susfs-*.log susfs-*.txt SuSFS-build-info.txt
+          find . \( -name "*.rej" -o -name "*.orig" \) -type f -delete 2>/dev/null || true
 
           echo "===== CLONE SUSFS4KSU KERNEL 4.9 PATCHSET ====="
           if ! git clone --depth=1 -b "$SUSFS_BRANCH" "$SUSFS_REPO" susfs4ksu 2>&1 | tee susfs-clone.log; then
@@ -799,42 +800,7 @@ jobs:
             exit 1
           fi
 
-          echo "===== PATCH KERNELSU NEXT FOR SUSFS ====="
-          KSU_ROOT=""
-          for CANDIDATE in KernelSU-Next KernelSU; do
-            if [ -d "$CANDIDATE/kernel" ]; then
-              KSU_ROOT="$CANDIDATE"
-              break
-            fi
-          done
-
-          if [ -z "$KSU_ROOT" ]; then
-            echo "ERROR: KernelSU-Next root not found"
-            find . -maxdepth 3 -type d | sort | sed -n '1,160p'
-            exit 1
-          fi
-
-          echo "KSU_ROOT=$KSU_ROOT" | tee susfs-ksu-root.txt
-
-          pushd "$KSU_ROOT" >/dev/null
-          curl -L "https://raw.githubusercontent.com/galaxybuild-project/tools/refs/heads/main/Patches/0001_susfs_157_for_ksunext.patch" -o 0001_susfs_for_ksunext.patch
-
-          if patch -p1 --dry-run < 0001_susfs_for_ksunext.patch 2>&1 | tee ../susfs-ksunext-dryrun.log; then
-            patch -p1 < 0001_susfs_for_ksunext.patch 2>&1 | tee ../susfs-ksunext-apply.log
-          else
-            echo "KernelSU-Next-specific SuSFS patch failed dry-run; trying SUSFS repo KernelSU patch as fallback" | tee -a ../susfs-ksunext-dryrun.log
-            if [ -f ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ] && \
-               patch -p1 --dry-run < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch 2>&1 | tee ../susfs-ksu-fallback-dryrun.log; then
-              patch -p1 < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch 2>&1 | tee ../susfs-ksu-fallback-apply.log
-            else
-              echo "ERROR: both KernelSU-Next SuSFS patches failed dry-run"
-              find .. -name "*.rej" -o -name "*.orig" | sort | tee ../susfs-rejects.txt
-              exit 1
-            fi
-          fi
-          popd >/dev/null
-
-          echo "===== PATCH KERNEL SOURCE FOR SUSFS 4.9 ====="
+          echo "===== PATCH KERNEL SOURCE FOR SUSFS 4.9 FIRST ====="
           KERNEL_PATCH=""
           for CANDIDATE in \
             susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.9.patch \
@@ -862,10 +828,334 @@ jobs:
           if patch -p1 --dry-run < "$KERNEL_PATCH" 2>&1 | tee susfs-kernel-dryrun.log; then
             patch -p1 < "$KERNEL_PATCH" 2>&1 | tee susfs-kernel-apply.log
           else
-            echo "ERROR: SuSFS kernel patch failed dry-run. Do not continue because partial SuSFS causes bootloop."
-            find . -name "*.rej" -o -name "*.orig" | sort | tee susfs-rejects.txt
+            echo "ERROR: SuSFS kernel patch failed dry-run. Do not continue because partial SuSFS causes bootloop." | tee -a susfs-kernel-dryrun.log
+            find . \( -name "*.rej" -o -name "*.orig" \) -type f | sort | tee susfs-rejects.txt
             exit 1
           fi
+
+          echo "===== LOCATE KERNELSU NEXT ROOT ====="
+          KSU_ROOT=""
+          for CANDIDATE in KernelSU-Next KernelSU; do
+            if [ -d "$CANDIDATE/kernel" ]; then
+              KSU_ROOT="$CANDIDATE"
+              break
+            fi
+          done
+
+          if [ -z "$KSU_ROOT" ]; then
+            echo "ERROR: KernelSU-Next root not found"
+            find . -maxdepth 3 -type d | sort | sed -n '1,160p'
+            exit 1
+          fi
+
+          echo "KSU_ROOT=$KSU_ROOT" | tee susfs-ksu-root.txt
+          export KSU_ROOT
+
+          echo "===== MANUAL KSU NEXT SUSFS BRIDGE LEVEL 3 ====="
+          python3 - <<'PY' 2>&1 | tee susfs-bridge-l3.log
+          from pathlib import Path
+          import os
+          import re
+
+          ksu_root = Path(os.environ.get("KSU_ROOT", "KernelSU-Next"))
+          kdir = ksu_root / "kernel"
+          if not kdir.exists():
+              raise SystemExit(f"ERROR: {kdir} not found")
+
+          def read(path):
+              p = Path(path)
+              if not p.exists():
+                  raise SystemExit(f"ERROR: missing {path}")
+              return p.read_text(errors="ignore")
+
+          def write(path, text):
+              Path(path).write_text(text)
+
+          def insert_before_last(text, marker, block):
+              idx = text.rfind(marker)
+              if idx < 0:
+                  return text + "\n" + block + "\n"
+              return text[:idx] + block + "\n" + text[idx:]
+
+          kconfig = kdir / "Kconfig"
+          ktxt = read(kconfig)
+          if "config KSU_SUSFS" not in ktxt:
+              block = r'''
+          menu "KernelSU - SUSFS"
+
+          config KSU_SUSFS
+          	bool "KernelSU addon - SUSFS"
+          	depends on KSU
+          	default y
+          	help
+          	  Patch and enable SUSFS for KernelSU Next.
+
+          config KSU_SUSFS_HAS_MAGIC_MOUNT
+          	bool "KernelSU SUSFS magic mount support"
+          	depends on KSU_SUSFS
+          	default y
+
+          config KSU_SUSFS_SUS_PATH
+          	bool "Enable suspicious path hiding"
+          	depends on KSU_SUSFS
+          	default y
+
+          config KSU_SUSFS_SUS_MOUNT
+          	bool "Enable suspicious mount hiding"
+          	depends on KSU_SUSFS
+          	default y
+
+          config KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
+          	bool "Auto add KSU default mounts to sus_mount"
+          	depends on KSU_SUSFS_SUS_MOUNT
+          	default y
+
+          config KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
+          	bool "Auto add bind mounts to sus_mount"
+          	depends on KSU_SUSFS_SUS_MOUNT
+          	default y
+
+          config KSU_SUSFS_SUS_KSTAT
+          	bool "Enable suspicious kstat spoofing"
+          	depends on KSU_SUSFS
+          	default y
+
+          config KSU_SUSFS_TRY_UMOUNT
+          	bool "Enable SuSFS try_umount list"
+          	depends on KSU_SUSFS
+          	default y
+
+          config KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
+          	bool "Auto add bind mounts to SuSFS try_umount"
+          	depends on KSU_SUSFS_TRY_UMOUNT
+          	default y
+
+          config KSU_SUSFS_SPOOF_UNAME
+          	bool "Enable uname spoofing"
+          	depends on KSU_SUSFS
+          	default n
+
+          config KSU_SUSFS_ENABLE_LOG
+          	bool "Enable SUSFS kernel log"
+          	depends on KSU_SUSFS
+          	default y
+
+          config KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+          	bool "Hide KSU/SUSFS symbols"
+          	depends on KSU_SUSFS
+          	default y
+
+          config KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+          	bool "Spoof cmdline or bootconfig"
+          	depends on KSU_SUSFS
+          	default n
+
+          config KSU_SUSFS_OPEN_REDIRECT
+          	bool "Enable open redirect"
+          	depends on KSU_SUSFS
+          	default n
+
+          config KSU_SUSFS_SUS_SU
+          	bool "Enable SUS-SU runtime mode"
+          	depends on KSU_SUSFS && KPROBES
+          	default n
+
+          endmenu
+          '''
+              ktxt = insert_before_last(ktxt, "endmenu", block)
+              write(kconfig, ktxt)
+              print(f"[PATCH] {kconfig}: added KernelSU - SUSFS Kconfig block")
+          else:
+              print(f"[OK] {kconfig}: CONFIG_KSU_SUSFS already present")
+
+          kbuild = kdir / "Kbuild"
+          if not kbuild.exists():
+              kbuild = kdir / "Makefile"
+          btxt = read(kbuild)
+          if "KSU_NEXT_SUSFS_BRIDGE_L3" not in btxt:
+              btxt += r'''
+
+          # KSU_NEXT_SUSFS_BRIDGE_L3
+          ccflags-y += -I$(srctree)/include
+          ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
+          $(eval SUSFS_VERSION=$(shell grep -E '^#define SUSFS_VERSION' $(srctree)/include/linux/susfs.h 2>/dev/null | awk '{print $$3}' | tr -d '"'))
+          $(info -- KSU_NEXT_SUSFS_BRIDGE_L3: SUSFS_VERSION=$(SUSFS_VERSION))
+          else
+          $(info -- KSU_NEXT_SUSFS_BRIDGE_L3: fs/susfs.c missing)
+          endif
+          '''
+              write(kbuild, btxt)
+              print(f"[PATCH] {kbuild}: added SuSFS bridge flags")
+          else:
+              print(f"[OK] {kbuild}: bridge already present")
+
+          init = kdir / "core" / "init.c"
+          itxt = read(init)
+          if "KSU_NEXT_SUSFS_BRIDGE_L3_INCLUDE" not in itxt:
+              lines = itxt.splitlines(True)
+              pos = 0
+              for i, line in enumerate(lines[:80]):
+                  if line.lstrip().startswith("#include"):
+                      pos = i + 1
+              inc = "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L3_INCLUDE */\n#include <linux/susfs.h>\n#endif\n"
+              lines.insert(pos, inc)
+              itxt = "".join(lines)
+          if "KSU_NEXT_SUSFS_BRIDGE_L3_INIT" not in itxt:
+              m = re.search(r"int\s+__init\s+kernelsu_init\s*\([^)]*\)\s*\{", itxt)
+              if not m:
+                  raise SystemExit("ERROR: kernelsu_init() not found in core/init.c")
+              insert = "\n#ifdef CONFIG_KSU_SUSFS\n\t/* KSU_NEXT_SUSFS_BRIDGE_L3_INIT */\n\tpr_info(\"susfs: init from KernelSU-Next bridge L3\\n\");\n\tsusfs_init();\n#endif\n"
+              itxt = itxt[:m.end()] + insert + itxt[m.end():]
+          write(init, itxt)
+          print(f"[PATCH] {init}: added susfs_init bridge")
+
+          dispatch = kdir / "supercall" / "dispatch.c"
+          dtxt = read(dispatch)
+          if "KSU_NEXT_SUSFS_BRIDGE_L3_INCLUDE" not in dtxt:
+              lines = dtxt.splitlines(True)
+              pos = 0
+              for i, line in enumerate(lines[:100]):
+                  if line.lstrip().startswith("#include"):
+                      pos = i + 1
+              inc = "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L3_INCLUDE */\n#include <linux/susfs.h>\n#include <linux/uaccess.h>\n#endif\n"
+              lines.insert(pos, inc)
+              dtxt = "".join(lines)
+          if "KSU_NEXT_SUSFS_BRIDGE_L3_HANDLERS" not in dtxt:
+              handler = r'''
+
+          #ifdef CONFIG_KSU_SUSFS
+          /* KSU_NEXT_SUSFS_BRIDGE_L3_HANDLERS */
+          bool susfs_is_allow_su(void)
+          {
+          	if (is_manager())
+          		return true;
+          	return ksu_is_allow_uid_for_current(current_uid().val);
+          }
+
+          #ifdef CONFIG_KSU_SUSFS_SUS_PATH
+          static int do_susfs_add_sus_path(void __user *arg)
+          {
+          	return susfs_add_sus_path((struct st_susfs_sus_path __user *)arg);
+          }
+          #endif
+
+          #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+          static int do_susfs_add_sus_mount(void __user *arg)
+          {
+          	return susfs_add_sus_mount((struct st_susfs_sus_mount __user *)arg);
+          }
+          #endif
+
+          #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+          static int do_susfs_add_sus_kstat(void __user *arg)
+          {
+          	return susfs_add_sus_kstat((struct st_susfs_sus_kstat __user *)arg);
+          }
+          #endif
+
+          #ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+          static int do_susfs_add_try_umount(void __user *arg)
+          {
+          	return susfs_add_try_umount((struct st_susfs_try_umount __user *)arg);
+          }
+          #endif
+
+          #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+          static int do_susfs_set_uname(void __user *arg)
+          {
+          	return susfs_set_uname((struct st_susfs_uname __user *)arg);
+          }
+          #endif
+
+          #ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
+          static int do_susfs_enable_log(void __user *arg)
+          {
+          	int enabled = 0;
+          	if (!arg)
+          		return -EINVAL;
+          	if (copy_from_user(&enabled, arg, sizeof(enabled)))
+          		return -EFAULT;
+          	susfs_set_log(enabled != 0);
+          	return 0;
+          }
+          #endif
+          #endif /* CONFIG_KSU_SUSFS */
+          '''
+              marker = "// IOCTL handlers mapping table"
+              if marker not in dtxt:
+                  raise SystemExit("ERROR: IOCTL handlers mapping marker not found in supercall/dispatch.c")
+              dtxt = dtxt.replace(marker, handler + "\n" + marker, 1)
+          if "SUSFS_ADD_SUS_PATH" not in dtxt:
+              mappings = r'''
+          #ifdef CONFIG_KSU_SUSFS
+          #ifdef CONFIG_KSU_SUSFS_SUS_PATH
+          	{ .cmd = CMD_SUSFS_ADD_SUS_PATH, .name = "SUSFS_ADD_SUS_PATH", .handler = do_susfs_add_sus_path, .perm_check = manager_or_root },
+          	{ .cmd = CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY, .name = "SUSFS_ADD_SUS_KSTAT_STATICALLY", .handler = do_susfs_add_sus_kstat, .perm_check = manager_or_root },
+          #endif
+          #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+          	{ .cmd = CMD_SUSFS_ADD_SUS_MOUNT, .name = "SUSFS_ADD_SUS_MOUNT", .handler = do_susfs_add_sus_mount, .perm_check = manager_or_root },
+          #endif
+          #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+          	{ .cmd = CMD_SUSFS_ADD_SUS_KSTAT, .name = "SUSFS_ADD_SUS_KSTAT", .handler = do_susfs_add_sus_kstat, .perm_check = manager_or_root },
+          	{ .cmd = CMD_SUSFS_UPDATE_SUS_KSTAT, .name = "SUSFS_UPDATE_SUS_KSTAT", .handler = do_susfs_add_sus_kstat, .perm_check = manager_or_root },
+          #endif
+          #ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+          	{ .cmd = CMD_SUSFS_ADD_TRY_UMOUNT, .name = "SUSFS_ADD_TRY_UMOUNT", .handler = do_susfs_add_try_umount, .perm_check = manager_or_root },
+          #endif
+          #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+          	{ .cmd = CMD_SUSFS_SET_UNAME, .name = "SUSFS_SET_UNAME", .handler = do_susfs_set_uname, .perm_check = manager_or_root },
+          #endif
+          #ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
+          	{ .cmd = CMD_SUSFS_ENABLE_LOG, .name = "SUSFS_ENABLE_LOG", .handler = do_susfs_enable_log, .perm_check = manager_or_root },
+          #endif
+          #endif
+          '''
+              sentinel = "\t{ .cmd = 0, .name = NULL, .handler = NULL, .perm_check = NULL }"
+              if sentinel not in dtxt:
+                  sentinel = "    { .cmd = 0, .name = NULL, .handler = NULL, .perm_check = NULL }"
+              if sentinel not in dtxt:
+                  raise SystemExit("ERROR: sentinel mapping not found in supercall/dispatch.c")
+              dtxt = dtxt.replace(sentinel, mappings + "\n" + sentinel, 1)
+          write(dispatch, dtxt)
+          print(f"[PATCH] {dispatch}: added SUSFS command bridge handlers")
+
+          kumount = kdir / "feature" / "kernel_umount.c"
+          utxt = read(kumount)
+          if "KSU_NEXT_SUSFS_BRIDGE_L3_INCLUDE" not in utxt:
+              lines = utxt.splitlines(True)
+              pos = 0
+              for i, line in enumerate(lines[:100]):
+                  if line.lstrip().startswith("#include"):
+                      pos = i + 1
+              lines.insert(pos, "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L3_INCLUDE */\n#include <linux/susfs.h>\n#endif\n")
+              utxt = "".join(lines)
+          if "KSU_NEXT_SUSFS_BRIDGE_L3_TRY_UMOUNT_CALL" not in utxt:
+              marker = "pr_info(\"handle umount for uid: %d, pid: %d\\n\", new_uid, current->pid);"
+              call = "\n#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT\n\t/* KSU_NEXT_SUSFS_BRIDGE_L3_TRY_UMOUNT_CALL */\n\tsusfs_try_umount(new_uid);\n#endif"
+              if marker in utxt:
+                  utxt = utxt.replace(marker, marker + call, 1)
+              else:
+                  print("[WARN] kernel_umount.c: umount marker not found; skipping susfs_try_umount call")
+          write(kumount, utxt)
+          print(f"[PATCH] {kumount}: added optional susfs_try_umount call")
+
+          rules = kdir / "selinux" / "rules.c"
+          rtxt = read(rules)
+          if "KSU_NEXT_SUSFS_BRIDGE_L3_SEPOLICY" not in rtxt:
+              allow = "\n#ifdef CONFIG_KSU_SUSFS\n\t/* KSU_NEXT_SUSFS_BRIDGE_L3_SEPOLICY */\n\tksu_allow(db, \"zygote\", \"labeledfs\", \"filesystem\", \"unmount\");\n#endif\n"
+              marker = "rcu_read_unlock();"
+              if marker in rtxt:
+                  rtxt = rtxt.replace(marker, allow + "\n\t" + marker, 1)
+              else:
+                  rtxt += allow
+              write(rules, rtxt)
+              print(f"[PATCH] {rules}: added zygote labeledfs unmount allow")
+
+          print("===== BRIDGE MARKERS =====")
+          for f in [kconfig, kbuild, init, dispatch, kumount, rules]:
+              t = read(f)
+              print(f"{f}: KSU_NEXT_SUSFS_BRIDGE_L3={t.count('KSU_NEXT_SUSFS_BRIDGE_L3')}, CONFIG_KSU_SUSFS={t.count('CONFIG_KSU_SUSFS')}")
+          PY
 
           echo "===== VERIFY SUSFS SOURCE INTEGRATION ====="
           {
@@ -877,8 +1167,8 @@ jobs:
             echo "--- SuSFS files ---"
             ls -lah fs/susfs.c include/linux/susfs.h include/linux/susfs_def.h 2>/dev/null || true
             echo ""
-            echo "--- SuSFS source markers ---"
-            grep -RIn "CONFIG_KSU_SUSFS\|SUSFS\|susfs" fs include/linux "$KSU_ROOT/kernel" drivers/kernelsu 2>/dev/null | head -400 || true
+            echo "--- KernelSU Next SuSFS bridge markers ---"
+            grep -RIn "KSU_NEXT_SUSFS_BRIDGE_L3\|CONFIG_KSU_SUSFS\|CMD_SUSFS\|susfs" "$KSU_ROOT/kernel" drivers/kernelsu fs include/linux 2>/dev/null | head -500 || true
           } | tee SuSFS-build-info.txt
 
           REQUIRED=(
@@ -904,22 +1194,31 @@ jobs:
             exit 1
           fi
 
-          echo "SuSFS level 1 source integration passed."
+          if ! grep -q "susfs_init" "$KSU_ROOT/kernel/core/init.c"; then
+            echo "ERROR: susfs_init bridge missing from KernelSU-Next init"
+            exit 1
+          fi
 
+          if ! grep -q "CMD_SUSFS_ADD_SUS_PATH" "$KSU_ROOT/kernel/supercall/dispatch.c"; then
+            echo "ERROR: SUSFS command bridge missing from KernelSU-Next dispatch"
+            exit 1
+          fi
 
-      - name: Verify KernelSU Next integration v15
+          echo "SuSFS bridge level 3 source integration passed."
+
+      - name: Verify KernelSU Next integration v17
         shell: bash
         working-directory: kernel
         run: |
           set -e
 
-          echo "===== VERIFY KERNELSU NEXT INTEGRATION v15 ====="
+          echo "===== VERIFY KERNELSU NEXT INTEGRATION v17 ====="
 
           {
             echo "Device: ${DEVICE}"
             echo "Model: ${MODEL_NAME}"
             echo "Android: ${PLATFORM_VERSION}/${ANDROID_MAJOR_VERSION}"
-            echo "Kernel release target: 4.9.220-G960NK-v15-ksunext-susfs-l1"
+            echo "Kernel release target: 4.9.220-G960NK-v17-ksunext-susfs-l3"
             echo ""
           } > ksu-next-build-info.txt
 
@@ -971,8 +1270,8 @@ jobs:
           echo ""
           echo "===== KSU MARKERS PREVIEW =====" | tee -a ksu-next-build-info.txt
           grep -RIn "CONFIG_KSU\|KSU_NEXT_MANUAL_HOOK\|KSU_NEXT_BACKPORT_PATH_UMOUNT\|ksu_handle_sys_reboot\|path_umount" \
-            Kconfig Makefile drivers fs kernel 2>/dev/null > ksu-next-markers-v15.txt || true
-          sed -n '1,260p' ksu-next-markers-v15.txt | tee -a ksu-next-build-info.txt || true
+            Kconfig Makefile drivers fs kernel 2>/dev/null > ksu-next-markers-v17.txt || true
+          sed -n '1,260p' ksu-next-markers-v17.txt | tee -a ksu-next-build-info.txt || true
 
           if ! grep -q "ksu_handle_sys_reboot" kernel/reboot.c; then
             echo "ERROR: reboot manual hook is missing"
@@ -984,7 +1283,7 @@ jobs:
             exit 1
           fi
 
-          echo "KernelSU Next v15 source verification passed."
+          echo "KernelSU Next v17 source verification passed."
 
 
       - name: Prepare defconfig
@@ -1017,7 +1316,7 @@ jobs:
 
           cat >> "$TEMP_CONFIG" <<'EOF'
 
-          # KernelSU Next official legacy v15 SuSFS L1 manual hook
+          # KernelSU Next official legacy v17 SuSFS Bridge L3 manual hook
           CONFIG_KSU=y
           CONFIG_KSU_MANUAL_HOOK=y
           # CONFIG_KSU_KPROBES_HOOK is not set
@@ -1170,7 +1469,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v15-ksunext-susfs-l1
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v17-ksunext-susfs-l3
           path: |
             kernel/*.log
             kernel/*.txt
@@ -1231,7 +1530,7 @@ jobs:
           cp -av SuSFS-build-info.txt "$OUT_DIR/SuSFS-build-info.txt" 2>/dev/null || true
           cp -av susfs-*.log "$OUT_DIR/" 2>/dev/null || true
           cp -av susfs-*.txt "$OUT_DIR/" 2>/dev/null || true
-          cp -av ksu-next-markers-v15.txt "$OUT_DIR/KernelSU-Next-markers-v15.txt" 2>/dev/null || true
+          cp -av ksu-next-markers-v17.txt "$OUT_DIR/KernelSU-Next-markers-v17.txt" 2>/dev/null || true
           grep -RIn "KSU_NEXT_MANUAL_HOOK\|ksu_handle_sys_reboot\|ksu_handle_execveat\|ksu_handle_faccessat\|ksu_handle_sys_read\|ksu_handle_stat" fs/exec.c fs/open.c fs/read_write.c fs/stat.c kernel/reboot.c > "$OUT_DIR/KernelSU-manual-hooks.txt" 2>/dev/null || true
           grep -RIn "KSU_NEXT_BACKPORT_PATH_UMOUNT\|int path_umount(struct path \*path, int flags)\|ksu_next_can_umount" fs/namespace.c fs/internal.h > "$OUT_DIR/KernelSU-path-umount.txt" 2>/dev/null || true
           grep -RIn "CONFIG_KSU_SUSFS\|SUSFS\|susfs" fs include/linux KernelSU-Next drivers/kernelsu 2>/dev/null > "$OUT_DIR/SuSFS-markers.txt" || true
@@ -1256,7 +1555,7 @@ jobs:
           RAW_DIR="$OUT_DIR/raw"
           AK_DIR="$GITHUB_WORKSPACE/AnyKernel3"
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
-          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-OneUI2.5-Q-v15-ksunext-susfs-l1-${SHORT_SHA}.zip"
+          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-OneUI2.5-Q-v17-ksunext-susfs-l3-${SHORT_SHA}.zip"
 
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 "$AK_DIR"
 
@@ -1275,7 +1574,7 @@ jobs:
             "## Target: Samsung Galaxy S9 ${MODEL_NAME} / ${DEVICE} / One UI 2.5 Android 10" \
             "" \
             "properties() { '" \
-            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} OneUI2.5 Android10 Q v15 KernelSU Next SuSFS L1" \
+            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} OneUI2.5 Android10 Q v17 KernelSU Next SuSFS L3" \
             "do.devicecheck=1" \
             "do.modules=0" \
             "do.systemless=1" \
@@ -1324,7 +1623,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v15-ksunext-susfs-l1
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v17-ksunext-susfs-l3
           path: |
             out/*.zip
             out/raw/*
@@ -1338,6 +1637,6 @@ jobs:
             out/KernelSU-manual-hooks.txt
             out/KernelSU-path-umount.txt
             out/KernelSU-Next-build-info.txt
-            out/KernelSU-Next-markers-v15.txt
+            out/KernelSU-Next-markers-v17.txt
           if-no-files-found: error
           compression-level: 6
