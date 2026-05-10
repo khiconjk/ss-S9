@@ -1,4 +1,4 @@
-name: v64 KSU Next + SuSFS Uptime SyncFix L50
+name: v65 KSU Next + SuSFS Uptime SyncFix L51
 
 "on":
   workflow_dispatch:
@@ -193,7 +193,7 @@ jobs:
           echo "Clean done" | tee -a clean.log
 
 
-      - name: Patch kernel release to G960NK v64 KSU Next + SuSFS Uptime SyncFix L50
+      - name: Patch kernel release to G960NK v65 KSU Next + SuSFS Uptime SyncFix L51
         shell: bash
         working-directory: kernel
         run: |
@@ -212,9 +212,9 @@ jobs:
           text = re.sub(r"^SUBLEVEL\s*=\s*.*$", "SUBLEVEL = 220", text, flags=re.MULTILINE)
 
           if re.search(r"^EXTRAVERSION\s*=", text, flags=re.MULTILINE):
-              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v64-ksunext-susfs-uptime-syncfix-l50", text, flags=re.MULTILINE)
+              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v65-ksunext-susfs-uptime-syncfix-l51", text, flags=re.MULTILINE)
           else:
-              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v64-ksunext-susfs-uptime-syncfix-l50", 1)
+              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v65-ksunext-susfs-uptime-syncfix-l51", 1)
 
           makefile.write_text(text)
           PY
@@ -222,7 +222,7 @@ jobs:
           echo "===== AFTER VERSION PATCH ====="
           grep -nE "^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)[[:space:]]*=" Makefile || true
 
-          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v64-ksunext-susfs-uptime-syncfix-l50"
+          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v65-ksunext-susfs-uptime-syncfix-l51"
 
 
       - name: Patch clang external assembler prefix
@@ -800,8 +800,8 @@ jobs:
             exit 1
           fi
 
-          echo "===== PATCH SUSFS CORE FOR KERNELSU NEXT LEGACY L50 ====="
-          python3 - <<'PY' 2>&1 | tee susfs-core-compat-l50.log
+          echo "===== PATCH SUSFS CORE FOR KERNELSU NEXT LEGACY L51 ====="
+          python3 - <<'PY' 2>&1 | tee susfs-core-compat-l51.log
           from pathlib import Path
 
           p = Path("fs/susfs.c")
@@ -811,16 +811,16 @@ jobs:
 
           old_include = '#include "../drivers/kernelsu/core_hook.h"'
           if old_include in text:
-              text = text.replace(old_include, '/* KSU_NEXT_SUSFS_BRIDGE_L50_REMOVED_OLD_CORE_HOOK */')
+              text = text.replace(old_include, '/* KSU_NEXT_SUSFS_BRIDGE_L51_REMOVED_OLD_CORE_HOOK */')
               print("[PATCH] fs/susfs.c: removed old KernelSU core_hook.h include")
           else:
               print("[OK] fs/susfs.c: old core_hook.h include not present")
 
-          compat_token = "KSU_NEXT_SUSFS_BRIDGE_L50_TRY_UMOUNT_COMPAT"
+          compat_token = "KSU_NEXT_SUSFS_BRIDGE_L51_TRY_UMOUNT_COMPAT"
           if compat_token not in text:
               compat = (
                   "\n#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT\n"
-                  "/* KSU_NEXT_SUSFS_BRIDGE_L50_TRY_UMOUNT_COMPAT */\n"
+                  "/* KSU_NEXT_SUSFS_BRIDGE_L51_TRY_UMOUNT_COMPAT */\n"
                   "static void try_umount(const char *mnt, bool check_mnt, int flags)\n"
                   "{\n"
                   "\tstruct path path;\n"
@@ -861,14 +861,14 @@ jobs:
 
           print("===== SUSFS CORE COMPAT MARKERS =====")
           for token in [
-              "KSU_NEXT_SUSFS_BRIDGE_L50_REMOVED_OLD_CORE_HOOK",
-              "KSU_NEXT_SUSFS_BRIDGE_L50_TRY_UMOUNT_COMPAT",
+              "KSU_NEXT_SUSFS_BRIDGE_L51_REMOVED_OLD_CORE_HOOK",
+              "KSU_NEXT_SUSFS_BRIDGE_L51_TRY_UMOUNT_COMPAT",
           ]:
               print(f"fs/susfs.c: {token}=" + ("yes" if token in text else "no"))
           PY
 
-          echo "===== VERIFY SUSFS CORE COMPAT L50 ====="
-          grep -n "core_hook.h\|KSU_NEXT_SUSFS_BRIDGE_L50\|static void try_umount" fs/susfs.c | tee susfs-core-compat-verify-l50.log || true
+          echo "===== VERIFY SUSFS CORE COMPAT L51 ====="
+          grep -n "core_hook.h\|KSU_NEXT_SUSFS_BRIDGE_L51\|static void try_umount" fs/susfs.c | tee susfs-core-compat-verify-l51.log || true
 
           echo "===== PATCH KERNEL SOURCE FOR SUSFS 4.9 FIRST ====="
           KERNEL_PATCH=""
@@ -898,7 +898,7 @@ jobs:
 
           echo "===== CREATE EXYNOS9810-SAFE SUSFS PATCH ====="
           export KERNEL_PATCH
-          python3 - <<'PY' 2>&1 | tee susfs-kernel-filter-l50.log
+          python3 - <<'PY' 2>&1 | tee susfs-kernel-filter-l51.log
           from pathlib import Path
           import os
 
@@ -930,8 +930,8 @@ jobs:
               else:
                   kept.extend(chunk)
 
-          Path("susfs-kernel-auto-l50.patch").write_text("".join(kept))
-          Path("susfs-kernel-manual-l50.txt").write_text("\n".join(skipped) + "\n")
+          Path("susfs-kernel-auto-l51.patch").write_text("".join(kept))
+          Path("susfs-kernel-manual-l51.txt").write_text("\n".join(skipped) + "\n")
 
           print("Skipped manual-compat file patches:")
           for item in skipped:
@@ -940,8 +940,8 @@ jobs:
           PY
 
           echo "===== APPLY SUSFS KERNEL PATCH EXCEPT MANUAL-COMPAT FILES ====="
-          if patch -p1 --dry-run < susfs-kernel-auto-l50.patch 2>&1 | tee susfs-kernel-dryrun.log; then
-            patch -p1 < susfs-kernel-auto-l50.patch 2>&1 | tee susfs-kernel-apply.log
+          if patch -p1 --dry-run < susfs-kernel-auto-l51.patch 2>&1 | tee susfs-kernel-dryrun.log; then
+            patch -p1 < susfs-kernel-auto-l51.patch 2>&1 | tee susfs-kernel-apply.log
           else
             echo "ERROR: SuSFS kernel auto patch failed outside known Exynos9810 manual files." | tee -a susfs-kernel-dryrun.log
             find . \( -name "*.rej" -o -name "*.orig" \) -type f | sort | tee susfs-rejects.txt
@@ -949,7 +949,7 @@ jobs:
           fi
 
           echo "===== APPLY MANUAL EXYNOS9810 SUSFS COMPAT PATCHES ====="
-          python3 - <<'PY' 2>&1 | tee susfs-kernel-manual-exynos9810-l50.log
+          python3 - <<'PY' 2>&1 | tee susfs-kernel-manual-exynos9810-l51.log
           from pathlib import Path
 
           def read(path):
@@ -1072,51 +1072,51 @@ jobs:
               return text
 
           # Manual replacement for failed fs/readdir.c hunk #2.
-          readdir_include = "#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n/* SUSFS_EXYNOS9810_L50_READDIR_INCLUDE */\n#include <linux/cred.h>\n#include <linux/susfs.h>\n#endif\n"
-          add_guarded_include("fs/readdir.c", readdir_include, "SUSFS_EXYNOS9810_L50_READDIR_INCLUDE")
+          readdir_include = "#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n/* SUSFS_EXYNOS9810_L51_READDIR_INCLUDE */\n#include <linux/cred.h>\n#include <linux/susfs.h>\n#endif\n"
+          add_guarded_include("fs/readdir.c", readdir_include, "SUSFS_EXYNOS9810_L51_READDIR_INCLUDE")
 
-          filldir64_block = "\n#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n\t/* SUSFS_EXYNOS9810_L50_FILLDIR64 */\n\tif (likely(current_cred()->user->android_kabi_reserved1 & 16777216) && susfs_sus_ino_for_filldir64(ino)) {\n\t\treturn 0;\n\t}\n#endif\n"
+          filldir64_block = "\n#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n\t/* SUSFS_EXYNOS9810_L51_FILLDIR64 */\n\tif (likely(current_cred()->user->android_kabi_reserved1 & 16777216) && susfs_sus_ino_for_filldir64(ino)) {\n\t\treturn 0;\n\t}\n#endif\n"
           insert_after_marker_in_function(
               "fs/readdir.c",
               "static int filldir64(struct dir_context *ctx",
               "buf->error = -EINVAL;",
               filldir64_block,
-              "SUSFS_EXYNOS9810_L50_FILLDIR64",
+              "SUSFS_EXYNOS9810_L51_FILLDIR64",
           )
 
           # Manual replacement for failed include/linux/fs.h inode hunk.
-          inode_block = "#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT\n\t/* SUSFS_EXYNOS9810_L50_INODE_KABI */\n\tu64 android_kabi_reserved1;\n\tu64 android_kabi_reserved2;\n#endif\n"
+          inode_block = "#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT\n\t/* SUSFS_EXYNOS9810_L51_INODE_KABI */\n\tu64 android_kabi_reserved1;\n\tu64 android_kabi_reserved2;\n#endif\n"
           insert_inside_struct(
               "include/linux/fs.h",
               "inode",
               inode_block,
-              "SUSFS_EXYNOS9810_L50_INODE_KABI",
+              "SUSFS_EXYNOS9810_L51_INODE_KABI",
           )
 
           # The super_block hunk usually applied; keep this idempotent for vendor offsets.
-          super_block = "#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT\n\t/* SUSFS_EXYNOS9810_L50_SUPERBLOCK_KABI */\n\tu64 android_kabi_reserved1;\n\tu64 android_kabi_reserved2;\n\tu64 android_kabi_reserved3;\n#endif\n"
+          super_block = "#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT\n\t/* SUSFS_EXYNOS9810_L51_SUPERBLOCK_KABI */\n\tu64 android_kabi_reserved1;\n\tu64 android_kabi_reserved2;\n\tu64 android_kabi_reserved3;\n#endif\n"
           insert_inside_struct(
               "include/linux/fs.h",
               "super_block",
               super_block,
-              "SUSFS_EXYNOS9810_L50_SUPERBLOCK_KABI",
+              "SUSFS_EXYNOS9810_L51_SUPERBLOCK_KABI",
           )
 
           print("===== MANUAL SUSFS EXYNOS9810 MARKERS =====")
           for path in ["fs/readdir.c", "include/linux/fs.h"]:
               text = read(path)
               for token in [
-                  "SUSFS_EXYNOS9810_L50_READDIR_INCLUDE",
-                  "SUSFS_EXYNOS9810_L50_FILLDIR64",
-                  "SUSFS_EXYNOS9810_L50_INODE_KABI",
-                  "SUSFS_EXYNOS9810_L50_SUPERBLOCK_KABI",
+                  "SUSFS_EXYNOS9810_L51_READDIR_INCLUDE",
+                  "SUSFS_EXYNOS9810_L51_FILLDIR64",
+                  "SUSFS_EXYNOS9810_L51_INODE_KABI",
+                  "SUSFS_EXYNOS9810_L51_SUPERBLOCK_KABI",
               ]:
                   if token in text:
                       print(f"{path}: {token}")
           PY
 
           echo "===== VERIFY MANUAL SUSFS COMPAT PATCHES ====="
-          grep -RIn "SUSFS_EXYNOS9810_L50\|susfs_sus_ino_for_filldir64\|android_kabi_reserved" fs/readdir.c include/linux/fs.h | tee susfs-kernel-manual-verify-l50.log
+          grep -RIn "SUSFS_EXYNOS9810_L51\|susfs_sus_ino_for_filldir64\|android_kabi_reserved" fs/readdir.c include/linux/fs.h | tee susfs-kernel-manual-verify-l51.log
 
           echo "===== LOCATE KERNELSU NEXT ROOT ====="
           KSU_ROOT=""
@@ -1138,7 +1138,7 @@ jobs:
           export KSU_ROOT
 
           echo "===== MANUAL KSU NEXT SUSFS BRIDGE LEVEL 5 ====="
-          python3 - <<'PY' 2>&1 | tee susfs-bridge-l50.log
+          python3 - <<'PY' 2>&1 | tee susfs-bridge-l51.log
           from pathlib import Path
           import os
           import re
@@ -1258,16 +1258,16 @@ jobs:
           if not kbuild.exists():
               kbuild = kdir / "Makefile"
           btxt = read(kbuild)
-          if "KSU_NEXT_SUSFS_BRIDGE_L50" not in btxt:
+          if "KSU_NEXT_SUSFS_BRIDGE_L51" not in btxt:
               btxt += r'''
 
-          # KSU_NEXT_SUSFS_BRIDGE_L50
+          # KSU_NEXT_SUSFS_BRIDGE_L51
           ccflags-y += -I$(srctree)/include
           ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
           $(eval SUSFS_VERSION=$(shell grep -E '^#define SUSFS_VERSION' $(srctree)/include/linux/susfs.h 2>/dev/null | awk '{print $$3}' | tr -d '"'))
-          $(info -- KSU_NEXT_SUSFS_BRIDGE_L50: SUSFS_VERSION=$(SUSFS_VERSION))
+          $(info -- KSU_NEXT_SUSFS_BRIDGE_L51: SUSFS_VERSION=$(SUSFS_VERSION))
           else
-          $(info -- KSU_NEXT_SUSFS_BRIDGE_L50: fs/susfs.c missing)
+          $(info -- KSU_NEXT_SUSFS_BRIDGE_L51: fs/susfs.c missing)
           endif
           '''
               write(kbuild, btxt)
@@ -1277,23 +1277,23 @@ jobs:
 
           init = kdir / "core" / "init.c"
           itxt = read(init)
-          if "KSU_NEXT_SUSFS_BRIDGE_L50_INCLUDE" not in itxt:
+          if "KSU_NEXT_SUSFS_BRIDGE_L51_INCLUDE" not in itxt:
               lines = itxt.splitlines(True)
               pos = 0
               for i, line in enumerate(lines[:80]):
                   if line.lstrip().startswith("#include"):
                       pos = i + 1
-              inc = "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L50_INCLUDE */\n#include <linux/susfs.h>\nextern void susfs_init(void);\n#endif\n"
+              inc = "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L51_INCLUDE */\n#include <linux/susfs.h>\nextern void susfs_init(void);\n#endif\n"
               lines.insert(pos, inc)
               itxt = "".join(lines)
-          if "KSU_NEXT_SUSFS_BRIDGE_L50_INIT" not in itxt:
+          if "KSU_NEXT_SUSFS_BRIDGE_L51_INIT" not in itxt:
               m = re.search(r"int\s+__init\s+kernelsu_init\s*\([^)]*\)\s*\{", itxt)
               if not m:
                   raise SystemExit("ERROR: kernelsu_init() not found in core/init.c")
-              insert = "\n#ifdef CONFIG_KSU_SUSFS\n\t/* KSU_NEXT_SUSFS_BRIDGE_L50_INIT */\n\textern void susfs_init(void);\n\tpr_info(\"susfs: init from KernelSU-Next bridge L50\\n\");\n\tsusfs_init();\n#endif\n"
+              insert = "\n#ifdef CONFIG_KSU_SUSFS\n\t/* KSU_NEXT_SUSFS_BRIDGE_L51_INIT */\n\textern void susfs_init(void);\n\tpr_info(\"susfs: init from KernelSU-Next bridge L51\\n\");\n\tsusfs_init();\n#endif\n"
               itxt = itxt[:m.end()] + insert + itxt[m.end():]
           write(init, itxt)
-          # KSU_NEXT_SUSFS_BRIDGE_L50_LOCAL_PROTO_FIX
+          # KSU_NEXT_SUSFS_BRIDGE_L51_LOCAL_PROTO_FIX
           itxt = read(init)
           fn_pos = itxt.rfind("int __init kernelsu_init", 0, itxt.find("susfs_init();") if "susfs_init();" in itxt else len(itxt))
           call_pos = itxt.find("susfs_init();", fn_pos if fn_pos >= 0 else 0)
@@ -1307,21 +1307,21 @@ jobs:
 
           dispatch = kdir / "supercall" / "dispatch.c"
           dtxt = read(dispatch)
-          if "KSU_NEXT_SUSFS_BRIDGE_L50_INCLUDE" not in dtxt:
+          if "KSU_NEXT_SUSFS_BRIDGE_L51_INCLUDE" not in dtxt:
               lines = dtxt.splitlines(True)
               pos = 0
               for i, line in enumerate(lines[:120]):
                   if line.lstrip().startswith("#include"):
                       pos = i + 1
-              inc = "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L50_INCLUDE */\n#include <linux/susfs.h>\n#include <linux/uaccess.h>\n#endif\n"
+              inc = "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L51_INCLUDE */\n#include <linux/susfs.h>\n#include <linux/uaccess.h>\n#endif\n"
               lines.insert(pos, inc)
               dtxt = "".join(lines)
 
-          if "KSU_NEXT_SUSFS_BRIDGE_L50_HANDLERS" not in dtxt:
+          if "KSU_NEXT_SUSFS_BRIDGE_L51_HANDLERS" not in dtxt:
               handler = r'''
 
           #ifdef CONFIG_KSU_SUSFS
-          /* KSU_NEXT_SUSFS_BRIDGE_L50_HANDLERS */
+          /* KSU_NEXT_SUSFS_BRIDGE_L51_HANDLERS */
           bool susfs_is_allow_su(void)
           {
           	if (is_manager())
@@ -1433,17 +1433,17 @@ jobs:
 
           kumount = kdir / "feature" / "kernel_umount.c"
           utxt = read(kumount)
-          if "KSU_NEXT_SUSFS_BRIDGE_L50_INCLUDE" not in utxt:
+          if "KSU_NEXT_SUSFS_BRIDGE_L51_INCLUDE" not in utxt:
               lines = utxt.splitlines(True)
               pos = 0
               for i, line in enumerate(lines[:100]):
                   if line.lstrip().startswith("#include"):
                       pos = i + 1
-              lines.insert(pos, "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L50_INCLUDE */\n#include <linux/susfs.h>\n#endif\n")
+              lines.insert(pos, "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L51_INCLUDE */\n#include <linux/susfs.h>\n#endif\n")
               utxt = "".join(lines)
-          if "KSU_NEXT_SUSFS_BRIDGE_L50_TRY_UMOUNT_CALL" not in utxt:
+          if "KSU_NEXT_SUSFS_BRIDGE_L51_TRY_UMOUNT_CALL" not in utxt:
               marker = "pr_info(\"handle umount for uid: %d, pid: %d\\n\", new_uid, current->pid);"
-              call = "\n#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT\n\t/* KSU_NEXT_SUSFS_BRIDGE_L50_TRY_UMOUNT_CALL */\n\tsusfs_try_umount(new_uid);\n#endif"
+              call = "\n#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT\n\t/* KSU_NEXT_SUSFS_BRIDGE_L51_TRY_UMOUNT_CALL */\n\tsusfs_try_umount(new_uid);\n#endif"
               if marker in utxt:
                   utxt = utxt.replace(marker, marker + call, 1)
               else:
@@ -1453,7 +1453,7 @@ jobs:
 
           rules = kdir / "selinux" / "rules.c"
           rtxt = read(rules)
-          # KSU_NEXT_SUSFS_BRIDGE_L50_SEPOLICY_SAFE_SKIP
+          # KSU_NEXT_SUSFS_BRIDGE_L51_SEPOLICY_SAFE_SKIP
           # Do not inject a standalone ksu_allow() line into rules.c.
           # On this KernelSU-Next legacy layout, inserting near rcu_read_unlock()
           # can land outside apply_kernelsu_rules_fn() and causes:
@@ -1461,7 +1461,7 @@ jobs:
           # SuSFS can build without this optional zygote labeledfs allow rule.
           broken = (
               "\n#ifdef CONFIG_KSU_SUSFS\n"
-              "\t/* KSU_NEXT_SUSFS_BRIDGE_L50_SEPOLICY */\n"
+              "\t/* KSU_NEXT_SUSFS_BRIDGE_L51_SEPOLICY */\n"
               "\tksu_allow(db, \"zygote\", \"labeledfs\", \"filesystem\", \"unmount\");\n"
               "#endif\n"
           )
@@ -1470,12 +1470,12 @@ jobs:
               write(rules, rtxt)
               print(f"[FIX] {rules}: removed unsafe standalone zygote labeledfs allow block")
           else:
-              print(f"[SKIP] {rules}: skipped optional zygote labeledfs allow for compile-safe L50")
+              print(f"[SKIP] {rules}: skipped optional zygote labeledfs allow for compile-safe L51")
 
           print("===== BRIDGE MARKERS =====")
           for f in [kconfig, kbuild, init, dispatch, kumount, rules]:
               t = read(f)
-              print(f"{f}: KSU_NEXT_SUSFS_BRIDGE_L50={t.count('KSU_NEXT_SUSFS_BRIDGE_L50')}, config KSU_SUSFS={t.count('config KSU_SUSFS')}, CONFIG_KSU_SUSFS={t.count('CONFIG_KSU_SUSFS')}")
+              print(f"{f}: KSU_NEXT_SUSFS_BRIDGE_L51={t.count('KSU_NEXT_SUSFS_BRIDGE_L51')}, config KSU_SUSFS={t.count('config KSU_SUSFS')}, CONFIG_KSU_SUSFS={t.count('CONFIG_KSU_SUSFS')}")
           PY
 
           echo "===== VERIFY SUSFS SOURCE INTEGRATION ====="
@@ -1489,7 +1489,7 @@ jobs:
             ls -lah fs/susfs.c include/linux/susfs.h include/linux/sus_su.h fs/sus_su.c 2>/dev/null || true
             echo ""
             echo "--- KernelSU Next SuSFS bridge markers ---"
-            grep -RIn "KSU_NEXT_SUSFS_BRIDGE_L50\|CONFIG_KSU_SUSFS\|config KSU_SUSFS\|CMD_SUSFS\|susfs" "$KSU_ROOT/kernel" drivers/kernelsu fs include/linux 2>/dev/null | head -500 || true
+            grep -RIn "KSU_NEXT_SUSFS_BRIDGE_L51\|CONFIG_KSU_SUSFS\|config KSU_SUSFS\|CMD_SUSFS\|susfs" "$KSU_ROOT/kernel" drivers/kernelsu fs include/linux 2>/dev/null | head -500 || true
             echo ""
             echo "--- KernelSU Kconfig SuSFS lines ---"
             grep -n "KSU_SUSFS" "$KSU_ROOT/kernel/Kconfig" || true
@@ -1541,13 +1541,13 @@ jobs:
           echo "SuSFS bridge level 15 source integration passed."
 
 
-      - name: Patch KernelSU ksud rc no-exec L50
+      - name: Patch KernelSU ksud rc no-exec L51
         shell: bash
         working-directory: kernel
         run: |
           set -e
 
-          echo "===== PATCH KSUD RC NO-EXEC L50 ====="
+          echo "===== PATCH KSUD RC NO-EXEC L51 ====="
           echo "Purpose: keep v33 root/SuSFS stable, but remove only init.rc exec lines that call ksud."
           echo "This does not replace KSUD_PATH globally, so su/manager path stays intact."
 
@@ -1561,15 +1561,15 @@ jobs:
           fi
 
           if [ -z "${KSU_ROOT:-}" ] || [ ! -d "$KSU_ROOT/kernel" ]; then
-            echo "ERROR: KSU_ROOT not found" | tee ksud-rcnoexec-l50.log
-            find . -maxdepth 4 -type d | sort | sed -n '1,180p' | tee -a ksud-rcnoexec-l50.log
+            echo "ERROR: KSU_ROOT not found" | tee ksud-rcnoexec-l51.log
+            find . -maxdepth 4 -type d | sort | sed -n '1,180p' | tee -a ksud-rcnoexec-l51.log
             exit 1
           fi
 
-          echo "KSU_ROOT=$KSU_ROOT" | tee ksud-rcnoexec-l50.log
+          echo "KSU_ROOT=$KSU_ROOT" | tee ksud-rcnoexec-l51.log
           export KSU_ROOT
 
-          python3 - <<'PY' 2>&1 | tee -a ksud-rcnoexec-l50.log
+          python3 - <<'PY' 2>&1 | tee -a ksud-rcnoexec-l51.log
           from pathlib import Path
           import os
           import re
@@ -1584,7 +1584,7 @@ jobs:
               raise SystemExit("ERROR: ksud_integration.c not found")
 
           text = src.read_text(errors="ignore")
-          marker = "KSU_NEXT_KSUD_RCNOEXEC_L50"
+          marker = "KSU_NEXT_KSUD_RCNOEXEC_L51"
           phases = ("post-fs-data", "services", "boot-completed")
 
           # Remove only Android init RC string lines that execute ksud during boot phases.
@@ -1613,25 +1613,25 @@ jobs:
           else:
               print(f"[WARN] {src}: no ksud RC exec line matched. Build continues unchanged from stable v33 behavior.")
 
-          print("===== KSUD RC NO-EXEC L50 SOURCE PREVIEW =====")
+          print("===== KSUD RC NO-EXEC L51 SOURCE PREVIEW =====")
           preview = src.read_text(errors="ignore").splitlines()
           for i, line in enumerate(preview, start=1):
               if marker in line or "KSUD_PATH" in line or "/data/adb/ksud" in line or "post-fs-data" in line or "boot-completed" in line:
                   print(f"{src}:{i}: {line}")
           PY
 
-          echo "===== VERIFY KSUD RC NO-EXEC L50 =====" | tee ksud-rcnoexec-l50-verify.log
-          grep -RIn "KSU_NEXT_KSUD_RCNOEXEC_L50\|KSUD_PATH\|/data/adb/ksud\|post-fs-data\|boot-completed" "$KSU_ROOT/kernel/runtime" drivers/kernelsu/runtime 2>/dev/null | tee -a ksud-rcnoexec-l50-verify.log || true
+          echo "===== VERIFY KSUD RC NO-EXEC L51 =====" | tee ksud-rcnoexec-l51-verify.log
+          grep -RIn "KSU_NEXT_KSUD_RCNOEXEC_L51\|KSUD_PATH\|/data/adb/ksud\|post-fs-data\|boot-completed" "$KSU_ROOT/kernel/runtime" drivers/kernelsu/runtime 2>/dev/null | tee -a ksud-rcnoexec-l51-verify.log || true
 
-      - name: Patch KernelSU info logs quiet L50
+      - name: Patch KernelSU info logs quiet L51
         shell: bash
         working-directory: kernel
         run: |
           set -e
 
-          echo "===== PATCH KERNELSU INFO LOGS QUIET L50 =====" | tee ksu-quiet-l50.log
+          echo "===== PATCH KERNELSU INFO LOGS QUIET L51 =====" | tee ksu-quiet-l51.log
 
-          python3 - <<'PY' 2>&1 | tee -a ksu-quiet-l50.log
+          python3 - <<'PY' 2>&1 | tee -a ksu-quiet-l51.log
           from pathlib import Path
 
           candidates = [
@@ -1641,9 +1641,9 @@ jobs:
               Path("kernel/kernelsu/include/klog.h"),
           ]
 
-          marker = "KSU_NEXT_ULTRA_CLEAN_L50"
+          marker = "KSU_NEXT_ULTRA_CLEAN_L51"
           block = "\n".join([
-              "/* KSU_NEXT_ULTRA_CLEAN_L50",
+              "/* KSU_NEXT_ULTRA_CLEAN_L51",
               " * Keep pr_warn/pr_err visible, but silence KernelSU pr_info noise",
               " * in non-debug builds. This does not touch SuSFS core or su hooks.",
               " */",
@@ -1697,8 +1697,8 @@ jobs:
               print(f"[DONE] patched_or_seen={patched}")
           PY
 
-          echo "===== VERIFY KERNELSU QUIET L50 =====" | tee ksu-quiet-l50-verify.log
-          grep -RIn "KSU_NEXT_ULTRA_CLEAN_L50\|#undef pr_info\|#define pr_info" KernelSU-Next KernelSU drivers/kernelsu kernel/kernelsu 2>/dev/null | tee -a ksu-quiet-l50-verify.log || true
+          echo "===== VERIFY KERNELSU QUIET L51 =====" | tee ksu-quiet-l51-verify.log
+          grep -RIn "KSU_NEXT_ULTRA_CLEAN_L51\|#undef pr_info\|#define pr_info" KernelSU-Next KernelSU drivers/kernelsu kernel/kernelsu 2>/dev/null | tee -a ksu-quiet-l51-verify.log || true
 
 
       - name: Verify KernelSU Next integration v57
@@ -1713,7 +1713,7 @@ jobs:
             echo "Device: ${DEVICE}"
             echo "Model: ${MODEL_NAME}"
             echo "Android: ${PLATFORM_VERSION}/${ANDROID_MAJOR_VERSION}"
-            echo "Kernel release target: 4.9.220-G960NK-v64-ksunext-susfs-uptime-syncfix-l50"
+            echo "Kernel release target: 4.9.220-G960NK-v65-ksunext-susfs-uptime-syncfix-l51"
             echo ""
           } > ksu-next-build-info.txt
 
@@ -1787,17 +1787,17 @@ jobs:
         run: |
           set -e
 
-          LOG="wireguard-kconfig-fix-l50.log"
+          LOG="wireguard-kconfig-fix-l51.log"
           : > "$LOG"
-          echo "===== WIREGUARD KCONFIG SAFE FIX L50 =====" | tee -a "$LOG"
+          echo "===== WIREGUARD KCONFIG SAFE FIX L51 =====" | tee -a "$LOG"
 
           if grep -qE '^[[:space:]]*(source|rsource)[[:space:]]+"net/wireguard/Kconfig"' net/Kconfig 2>/dev/null; then
             echo "net/Kconfig references net/wireguard/Kconfig" | tee -a "$LOG"
 
             if [ ! -f net/wireguard/Kconfig ]; then
               echo "net/wireguard/Kconfig is missing; disabling stale source line before defconfig" | tee -a "$LOG"
-              cp -av net/Kconfig net/Kconfig.before-wireguard-l50 2>&1 | tee -a "$LOG"
-              sed -i -E 's@^([[:space:]]*)(source|rsource)([[:space:]]+)"net/wireguard/Kconfig".*@\1# L50 disabled stale missing WireGuard Kconfig source@' net/Kconfig
+              cp -av net/Kconfig net/Kconfig.before-wireguard-l51 2>&1 | tee -a "$LOG"
+              sed -i -E 's@^([[:space:]]*)(source|rsource)([[:space:]]+)"net/wireguard/Kconfig".*@\1# L51 disabled stale missing WireGuard Kconfig source@' net/Kconfig
             else
               echo "net/wireguard/Kconfig exists; keeping source line" | tee -a "$LOG"
             fi
@@ -1817,7 +1817,7 @@ jobs:
           echo "===== net/Kconfig wireguard lines after fix =====" | tee -a "$LOG"
           grep -nEi 'wireguard' net/Kconfig 2>/dev/null | tee -a "$LOG" || true
 
-          echo "WireGuard Kconfig safe fix L50 completed" | tee -a "$LOG"
+          echo "WireGuard Kconfig safe fix L51 completed" | tee -a "$LOG"
 
       - name: Patch missing SipHash weak compat object safely
         shell: bash
@@ -1825,18 +1825,18 @@ jobs:
         run: |
           set -e
 
-          LOG="siphash-linkfix-l50.log"
+          LOG="siphash-linkfix-l51.log"
           : > "$LOG"
-          echo "===== SIPHASH WEAK COMPAT LINK FIX L50 =====" | tee -a "$LOG"
+          echo "===== SIPHASH WEAK COMPAT LINK FIX L51 =====" | tee -a "$LOG"
 
           echo "===== siphash references before fix =====" | tee -a "$LOG"
           grep -RIn "siphash_4u64\|siphash_3u32\|__siphash_aligned\|siphash.o\|CONFIG_SIPHASH" \
             include lib net kernel 2>/dev/null | head -260 | tee -a "$LOG" || true
 
           mkdir -p kernel
-          cat > kernel/siphash_compat_l50.c <<'EOF_SIPHASH_COMPAT'
+          cat > kernel/siphash_compat_l51.c <<'EOF_SIPHASH_COMPAT'
           /*
-           * KSU_NEXT_SIPHASH_COMPAT_L50
+           * KSU_NEXT_SIPHASH_COMPAT_L51
            * Legacy Exynos9810 tree: net/ uses siphash symbols while the object
            * is not reliably linked into vmlinux. These weak definitions are
            * linked from kernel/built-in.o. If the tree later links a real strong
@@ -1862,7 +1862,7 @@ jobs:
               v2 += v1; v1 = rol64(v1, 17); v1 ^= v2; v2 = rol64(v2, 32); \
           } while (0)
 
-          static inline u64 ksu_get_unaligned_le64_l50(const void *p)
+          static inline u64 ksu_get_unaligned_le64_l51(const void *p)
           {
               const u8 *b = p;
               return ((u64)b[0]) | ((u64)b[1] << 8) | ((u64)b[2] << 16) | ((u64)b[3] << 24) |
@@ -1883,7 +1883,7 @@ jobs:
               u64 m;
 
               while (len >= 8) {
-                  m = ksu_get_unaligned_le64_l50(in);
+                  m = ksu_get_unaligned_le64_l51(in);
                   v3 ^= m;
                   KSU_SIPHASH_ROUND;
                   KSU_SIPHASH_ROUND;
@@ -1928,15 +1928,15 @@ jobs:
           }
           EOF_SIPHASH_COMPAT
 
-          if grep -q "KSU_NEXT_SIPHASH_COMPAT_L50" kernel/Makefile; then
-            echo "kernel/Makefile already has KSU_NEXT_SIPHASH_COMPAT_L50" | tee -a "$LOG"
+          if grep -q "KSU_NEXT_SIPHASH_COMPAT_L51" kernel/Makefile; then
+            echo "kernel/Makefile already has KSU_NEXT_SIPHASH_COMPAT_L51" | tee -a "$LOG"
           else
             {
               echo ""
-              echo "# KSU_NEXT_SIPHASH_COMPAT_L50: provide weak siphash symbols for net/built-in.o link."
-              echo "obj-y += siphash_compat_l50.o"
+              echo "# KSU_NEXT_SIPHASH_COMPAT_L51: provide weak siphash symbols for net/built-in.o link."
+              echo "obj-y += siphash_compat_l51.o"
             } >> kernel/Makefile
-            echo "[PATCH] kernel/Makefile: obj-y += siphash_compat_l50.o" | tee -a "$LOG"
+            echo "[PATCH] kernel/Makefile: obj-y += siphash_compat_l51.o" | tee -a "$LOG"
           fi
 
           # Keep previous safer hints too, but do not rely on them. This helps if the
@@ -1949,21 +1949,21 @@ jobs:
           fi
 
           echo "===== kernel/Makefile siphash lines after fix =====" | tee -a "$LOG"
-          grep -n "siphash_compat_l50\|KSU_NEXT_SIPHASH_COMPAT_L50" kernel/Makefile | tee -a "$LOG" || true
+          grep -n "siphash_compat_l51\|KSU_NEXT_SIPHASH_COMPAT_L51" kernel/Makefile | tee -a "$LOG" || true
           echo "===== compat source preview =====" | tee -a "$LOG"
-          ls -lah kernel/siphash_compat_l50.c | tee -a "$LOG"
-          grep -n "__siphash_aligned\|siphash_3u32\|siphash_4u64\|__weak" kernel/siphash_compat_l50.c | tee -a "$LOG" || true
+          ls -lah kernel/siphash_compat_l51.c | tee -a "$LOG"
+          grep -n "__siphash_aligned\|siphash_3u32\|siphash_4u64\|__weak" kernel/siphash_compat_l51.c | tee -a "$LOG" || true
 
-          echo "SipHash weak compat link fix L50 completed" | tee -a "$LOG"
+          echo "SipHash weak compat link fix L51 completed" | tee -a "$LOG"
 
-      - name: Apply clean S9 ghost uptime proc surface L50
+      - name: Apply clean S9 ghost uptime proc surface L51
         shell: bash
         working-directory: kernel
         run: |
           set -euo pipefail
-          echo "===== APPLY CLEAN S9 GHOST UPTIME L50 ====="
+          echo "===== APPLY CLEAN S9 GHOST UPTIME L51 ====="
           mkdir -p scripts include/linux kernel
-          cat > scripts/ci_apply_s9_ghost_uptime_l50.py <<'PY'
+          cat > scripts/ci_apply_s9_ghost_uptime_l51.py <<'PY'
           from pathlib import Path
           import re
 
@@ -1976,7 +1976,7 @@ jobs:
           HEADER = ROOT / 'include/linux/ghost_uptime.h'
           MODULE = ROOT / 'kernel/ghost_uptime.c'
           KMAKE = ROOT / 'kernel/Makefile'
-          REPORT = ROOT / 's9-ghost-uptime-l50-report.txt'
+          REPORT = ROOT / 's9-ghost-uptime-l51-report.txt'
 
           def die(msg):
               raise SystemExit('ERROR: ' + msg)
@@ -2027,7 +2027,7 @@ jobs:
 
           write(MODULE, '''// SPDX-License-Identifier: GPL-2.0
           /*
-           * S9/Exynos9810 clean ghost uptime helper L50.
+           * S9/Exynos9810 clean ghost uptime helper L51.
            *
            * Design:
            * - one module owns the offset
@@ -2113,8 +2113,8 @@ jobs:
               ghost_uptime_ready = true;
 
           #ifndef CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
-              pr_info("ghost_uptime_l50: offset_secs=%llu offset_days=%llu\n",
-                      secs, div64_u64(secs, GHOST_UPTIME_DAY_SECS));
+              pr_info("ghost_uptime_l51: offset_secs=%llu offset_days=%llu\n",
+                      secs, div65_u64(secs, GHOST_UPTIME_DAY_SECS));
           #endif
           }
           EXPORT_SYMBOL_GPL(ghost_uptime_apply_boot_time);
@@ -2129,7 +2129,7 @@ jobs:
           {
               if (!ghost_uptime_offset_ns)
                   return 0;
-              return div64_u64(ghost_uptime_offset_ns, NSEC_PER_SEC);
+              return div65_u64(ghost_uptime_offset_ns, NSEC_PER_SEC);
           }
 
           void ghost_uptime_apply_proc_uptime_pair(struct timespec *uptime, struct timespec *idle)
@@ -2209,7 +2209,7 @@ jobs:
               if (!ghost_uptime_stat_magic_allowed(inode->i_sb->s_magic))
                   return;
 
-              off = div64_u64(ghost_uptime_offset_ns, NSEC_PER_SEC);
+              off = div65_u64(ghost_uptime_offset_ns, NSEC_PER_SEC);
               ghost_uptime_sub_time64(&stat->atime, off);
               ghost_uptime_sub_time64(&stat->mtime, off);
               ghost_uptime_sub_time64(&stat->ctime, off);
@@ -2224,8 +2224,8 @@ jobs:
           # obj-y at the very top can be overwritten later.  Force a bottom
           # append marker to guarantee ghost_uptime.o is linked into vmlinux.
           km = re.sub(r'(?m)^obj-y\s*\+=\s*ghost_uptime\.o\s*\n', '', km)
-          marker = '# S9_GHOST_UPTIME_L50_LINK_OBJECT\nobj-y += ghost_uptime.o\n'
-          if 'S9_GHOST_UPTIME_L50_LINK_OBJECT' not in km:
+          marker = '# S9_GHOST_UPTIME_L51_LINK_OBJECT\nobj-y += ghost_uptime.o\n'
+          if 'S9_GHOST_UPTIME_L51_LINK_OBJECT' not in km:
               km = km.rstrip() + '\n\n' + marker
               write(KMAKE, km)
               report.append('kernel/Makefile appended obj-y += ghost_uptime.o at bottom')
@@ -2273,7 +2273,7 @@ jobs:
 
 
           # /proc/uptime and /proc/stat are Android-visible uptime surfaces.
-          # L50 also adjusts /proc/uptime idle field and sysinfo(2), which toybox uptime often uses.
+          # L51 also adjusts /proc/uptime idle field and sysinfo(2), which toybox uptime often uses.
           # Keep real CLOCK_MONOTONIC / RAW untouched; only change exported display values.
           pu = read(PROC_UPTIME)
           pu_orig = pu
@@ -2292,22 +2292,33 @@ jobs:
           sysc_orig = sysc
           sysc = add_include_once(sysc, '#include <linux/ghost_uptime.h>')
           # kernel/sys.c is compiled as old GNU C with -Werror=declaration-after-statement.
-          # Do not place a local extern inside the function body.  The prototype lives in
-          # include/linux/ghost_uptime.h at file scope through the include above.
+          # Force a file-scope prototype near the include area because the previous
+          # header include can land inside vendor/KSU #ifdef include regions on this tree.
+          sysc = re.sub(r'\n\s*/\* S9_GHOST_UPTIME_SYSINFO_PROTO_L51 \*/\s*\n\s*extern\s+void\s+ghost_uptime_apply_sysinfo\s*\(\s*struct\s+sysinfo\s*\*\s*info\s*\)\s*;\s*', '\n', sysc)
           sysc = re.sub(r'\n\s*extern\s+void\s+ghost_uptime_apply_sysinfo\s*\(\s*struct\s+sysinfo\s*\*\s*info\s*\)\s*;\s*\n\s*ghost_uptime_apply_sysinfo\s*\(\s*info\s*\)\s*;', '\n\tghost_uptime_apply_sysinfo(info);', sysc)
           sysc = re.sub(r'\n\s*extern\s+void\s+ghost_uptime_apply_sysinfo\s*\(\s*struct\s+sysinfo\s*\*\s*info\s*\)\s*;', '\n', sysc)
+          proto = '\n/* S9_GHOST_UPTIME_SYSINFO_PROTO_L51 */\nextern void ghost_uptime_apply_sysinfo(struct sysinfo *info);\n'
+          if 'S9_GHOST_UPTIME_SYSINFO_PROTO_L51' not in sysc:
+              anchor = '#include <linux/syscalls.h>'
+              if anchor in sysc:
+                  sysc = sysc.replace(anchor, anchor + proto, 1)
+              else:
+                  m = re.search(r'(?m)^(#include\s+<[^>]+>\s*)', sysc)
+                  if not m:
+                      die('cannot find safe top-level include anchor in kernel/sys.c for sysinfo prototype')
+                  sysc = sysc[:m.end()] + proto + sysc[m.end():]
           if 'ghost_uptime_apply_sysinfo(info);' not in sysc:
               sysc, n = re.subn(r'(info->uptime\s*=\s*[^;]+;)', r'\1\n\tghost_uptime_apply_sysinfo(info);', sysc, count=1)
               if n != 1:
                   die('cannot find info->uptime assignment anchor in kernel/sys.c')
           if sysc.count('ghost_uptime_apply_sysinfo(info);') != 1:
               die('ghost_uptime_apply_sysinfo call count is not exactly 1')
-          if 'extern void ghost_uptime_apply_sysinfo(struct sysinfo *info);' in sysc:
-              die('local ghost_uptime_apply_sysinfo extern still exists in kernel/sys.c')
+          if 'S9_GHOST_UPTIME_SYSINFO_PROTO_L51' not in sysc:
+              die('ghost_uptime sysinfo top-level prototype marker missing in kernel/sys.c')
           if '#include <linux/ghost_uptime.h>' not in sysc:
               die('ghost_uptime header include missing in kernel/sys.c')
           write(SYS, sysc)
-          report.append(f'kernel/sys.c sysinfo-sync header-prototype changed={sysc != sysc_orig}')
+          report.append(f'kernel/sys.c sysinfo-sync top-level-prototype changed={sysc != sysc_orig}')
 
           ps = read(PROC_STAT)
           ps_orig = ps
@@ -2324,9 +2335,9 @@ jobs:
           REPORT.write_text('\n'.join(report) + '\n')
           print(REPORT.read_text())
           PY
-          python3 scripts/ci_apply_s9_ghost_uptime_l50.py
-          echo "===== VERIFY S9 GHOST UPTIME L50 ====="
-          grep -RniE "ghost_uptime_apply_boot_time|ghost_uptime_apply_stat|ghost_uptime_apply_proc_uptime_pair|ghost_uptime_apply_sysinfo|ghost_uptime_apply_proc_uptime_ts|ghost_uptime_apply_proc_btime64|ghost_uptime_offset_ns|ghost_uptime_l50|get_fake_boottime|arch_sys_boot_offset|return[[:space:]]+delta[[:space:]]*\\+" \
+          python3 scripts/ci_apply_s9_ghost_uptime_l51.py
+          echo "===== VERIFY S9 GHOST UPTIME L51 ====="
+          grep -RniE "ghost_uptime_apply_boot_time|ghost_uptime_apply_stat|ghost_uptime_apply_proc_uptime_pair|ghost_uptime_apply_sysinfo|ghost_uptime_apply_proc_uptime_ts|ghost_uptime_apply_proc_btime64|ghost_uptime_offset_ns|ghost_uptime_l51|get_fake_boottime|arch_sys_boot_offset|return[[:space:]]+delta[[:space:]]*\\+" \
             kernel/time/timekeeping.c fs/stat.c fs/proc/uptime.c fs/proc/stat.c kernel/sys.c include/linux/ghost_uptime.h kernel/ghost_uptime.c kernel/Makefile 2>/dev/null || true
           if grep -RniE "get_fake_boottime|arch_sys_boot_offset|return[[:space:]]+delta[[:space:]]*\\+" kernel/time/timekeeping.c fs/stat.c include/linux/ghost_uptime.h 2>/dev/null; then
             echo "ERROR: old/dirty uptime pattern still exists"
@@ -2334,11 +2345,12 @@ jobs:
           fi
           grep -q "ghost_uptime_apply_boot_time(&boot, now.tv_sec)" kernel/time/timekeeping.c
           grep -q "ghost_uptime_apply_stat(inode, stat);" fs/stat.c
-          grep -q "S9_GHOST_UPTIME_L50_LINK_OBJECT" kernel/Makefile
+          grep -q "S9_GHOST_UPTIME_L51_LINK_OBJECT" kernel/Makefile
           grep -q "ghost_uptime_apply_proc_uptime_pair(&uptime, &idle);" fs/proc/uptime.c
           grep -q "ghost_uptime_apply_sysinfo(info);" kernel/sys.c
+          grep -q "S9_GHOST_UPTIME_SYSINFO_PROTO_L51" kernel/sys.c
           grep -q "ghost_uptime_apply_proc_btime64(&boottime);" fs/proc/stat.c
-          cp -f s9-ghost-uptime-l50-report.txt ../s9-ghost-uptime-l50-report.txt
+          cp -f s9-ghost-uptime-l51-report.txt ../s9-ghost-uptime-l51-report.txt
 
       - name: Prepare defconfig
         shell: bash
@@ -2370,7 +2382,7 @@ jobs:
 
           cat >> "$TEMP_CONFIG" <<'EOF'
 
-          # KernelSU Next official legacy v57 SuSFS Bridge L50 manual hook
+          # KernelSU Next official legacy v57 SuSFS Bridge L51 manual hook
           CONFIG_KSU=y
           CONFIG_KSU_MANUAL_HOOK=y
           # CONFIG_KSU_KPROBES_HOOK is not set
@@ -2460,7 +2472,7 @@ jobs:
           echo "===== OLDDEFCONFIG ====="
           make "${MAKE_ARGS[@]}" olddefconfig 2>&1 | tee olddefconfig.log
 
-          echo "===== HARD REPAIR KSU/SUSFS CONFIG AFTER OLDDEFCONFIG L50 ====="
+          echo "===== HARD REPAIR KSU/SUSFS CONFIG AFTER OLDDEFCONFIG L51 ====="
           if [ -f "drivers/kernelsu/Kconfig" ]; then
             if ! grep -q 'drivers/kernelsu/Kconfig' drivers/Kconfig; then
               if grep -q '^endmenu' drivers/Kconfig; then
@@ -2530,16 +2542,16 @@ jobs:
                   continue
               out.append(line)
           out.append('')
-          out.append('# KSU/SuSFS hard repair L50 after olddefconfig')
+          out.append('# KSU/SuSFS hard repair L51 after olddefconfig')
           for k in sorted(set_y):
               out.append(f'{k}=y')
           for k in sorted(set_n):
               out.append(f'# {k} is not set')
           p.write_text('\n'.join(out) + '\n')
-          print('[PATCH] .config: force-wrote KSU/SuSFS options L50')
+          print('[PATCH] .config: force-wrote KSU/SuSFS options L51')
           PYCONFIG
 
-          echo "===== OLDDEFCONFIG AFTER KSU/SUSFS HARD REPAIR L50 ====="
+          echo "===== OLDDEFCONFIG AFTER KSU/SUSFS HARD REPAIR L51 ====="
           make "${MAKE_ARGS[@]}" olddefconfig 2>&1 | tee -a olddefconfig.log
 
           echo "===== CONFIG CHECK ====="
@@ -2618,7 +2630,7 @@ jobs:
           } > KernelSU-config.txt
           {
             echo "===== SuSFS build info snapshot ====="
-            echo "workflow=v64-ksunext-susfs-uptime-syncfix-l50"
+            echo "workflow=v65-ksunext-susfs-uptime-syncfix-l51"
             echo "date=$(date -u)"
             echo "DEVICE=${DEVICE:-unknown}"
             echo "MODEL_NAME=${MODEL_NAME:-unknown}"
@@ -2629,7 +2641,7 @@ jobs:
             ls -lah susfs-*.log susfs-*.txt 2>/dev/null || true
             echo ""
             echo "--- susfs markers ---"
-            grep -RIn "KSU_NEXT_SUSFS_BRIDGE_L50|CONFIG_KSU_SUSFS|config KSU_SUSFS|CMD_SUSFS|susfs" KernelSU-Next drivers/kernelsu fs include/linux 2>/dev/null | head -500 || true
+            grep -RIn "KSU_NEXT_SUSFS_BRIDGE_L51|CONFIG_KSU_SUSFS|config KSU_SUSFS|CMD_SUSFS|susfs" KernelSU-Next drivers/kernelsu fs include/linux 2>/dev/null | head -500 || true
           } > SuSFS-build-info.txt
           ls -lah build.log KernelSU-config.txt SuSFS-build-info.txt || true
 
@@ -2637,7 +2649,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v64-ksunext-susfs-uptime-syncfix-l50
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v65-ksunext-susfs-uptime-syncfix-l51
           path: |
             kernel/*.log
             kernel/*.txt
@@ -2723,7 +2735,7 @@ jobs:
           RAW_DIR="$OUT_DIR/raw"
           AK_DIR="$GITHUB_WORKSPACE/AnyKernel3"
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
-          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-OneUI2.5-Q-v64-ksunext-susfs-uptime-syncfix-l50-${SHORT_SHA}.zip"
+          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-OneUI2.5-Q-v65-ksunext-susfs-uptime-syncfix-l51-${SHORT_SHA}.zip"
 
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 "$AK_DIR"
 
@@ -2742,7 +2754,7 @@ jobs:
             "## Target: Samsung Galaxy S9 ${MODEL_NAME} / ${DEVICE} / One UI 2.5 Android 10" \
             "" \
             "properties() { '" \
-            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} OneUI2.5 Android10 Q v57 KernelSU Next SuSFS Locked Stable L50" \
+            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} OneUI2.5 Android10 Q v57 KernelSU Next SuSFS Locked Stable L51" \
             "do.devicecheck=1" \
             "do.modules=0" \
             "do.systemless=1" \
@@ -2791,7 +2803,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v64-ksunext-susfs-uptime-syncfix-l50
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v65-ksunext-susfs-uptime-syncfix-l51
           path: |
             out/*.zip
             out/raw/*
