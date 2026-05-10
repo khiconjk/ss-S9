@@ -1,0 +1,3452 @@
+name: v73 KSU Next + SuSFS CLOCK_MONOTONIC VDSO Hook L59
+
+"on":
+  workflow_dispatch:
+    inputs:
+      ref_to_build:
+        description: "Branch/ref to build"
+        required: true
+        default: "test_kernel"
+      device:
+        description: "Device target"
+        required: true
+        default: "starlte"
+        type: choice
+        options:
+          - starlte
+          - star2lte
+          - crownlte
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ss-s9-manual-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ARCH: arm64
+  SUBARCH: arm64
+  PLATFORM_VERSION: "10"
+  ANDROID_MAJOR_VERSION: q
+  TEMP_DEFCONFIG: exynos9810_temp_defconfig
+  SUSFS_BRANCH: "1.4.2-kernel-4.9"
+  SUSFS_REPO: "https://gitlab.com/1392726643/susfs4ksu.git"
+
+jobs:
+  build:
+    name: Build kernel
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Free disk space
+        shell: bash
+        run: |
+          set -e
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/local/share/boost || true
+          sudo apt-get clean || true
+          df -h
+
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref_to_build }}
+          fetch-depth: 1
+          path: kernel
+
+      - name: Install packages
+        shell: bash
+        run: |
+          set -e
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc \
+            bison \
+            binutils-aarch64-linux-gnu \
+            binutils-arm-linux-gnueabi \
+            build-essential \
+            ca-certificates \
+            ccache \
+            clang \
+            cpio \
+            flex \
+            g++ \
+            gcc \
+            gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi \
+            git \
+            libelf-dev \
+            libssl-dev \
+            lld \
+            make \
+            patch \
+            pahole \
+            perl \
+            python3 \
+            python-is-python3 \
+            rsync \
+            unzip \
+            zip
+
+          echo "/usr/lib/ccache" >> "$GITHUB_PATH"
+
+          echo "===== TOOLCHAIN ====="
+          clang --version
+          aarch64-linux-gnu-gcc --version
+          aarch64-linux-gnu-as --version
+          aarch64-linux-gnu-ld.bfd --version
+          arm-linux-gnueabi-gcc --version
+          arm-linux-gnueabi-as --version
+
+      - name: Select device config
+        id: target
+        shell: bash
+        run: |
+          set -e
+
+          DEVICE="${{ inputs.device }}"
+
+          case "$DEVICE" in
+            starlte)
+              DEVICE_DEFCONFIG="exynos9810-starlte_defconfig"
+              MODEL_NAME="G960NK"
+              AK_DEVICE_1="starlte"
+              AK_DEVICE_2="starlteks"
+              AK_DEVICE_3="starltekor"
+              AK_DEVICE_4="SM-G960N"
+              ;;
+            star2lte)
+              DEVICE_DEFCONFIG="exynos9810-star2lte_defconfig"
+              MODEL_NAME="G965"
+              AK_DEVICE_1="star2lte"
+              AK_DEVICE_2="star2lteks"
+              AK_DEVICE_3="star2ltekor"
+              AK_DEVICE_4="SM-G965N"
+              ;;
+            crownlte)
+              DEVICE_DEFCONFIG="exynos9810-crownlte_defconfig"
+              MODEL_NAME="N960"
+              AK_DEVICE_1="crownlte"
+              AK_DEVICE_2="crownlteks"
+              AK_DEVICE_3="crownltekor"
+              AK_DEVICE_4="SM-N960N"
+              ;;
+            *)
+              echo "Unsupported device: $DEVICE"
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "DEVICE=$DEVICE"
+            echo "DEVICE_DEFCONFIG=$DEVICE_DEFCONFIG"
+            echo "MODEL_NAME=$MODEL_NAME"
+            echo "AK_DEVICE_1=$AK_DEVICE_1"
+            echo "AK_DEVICE_2=$AK_DEVICE_2"
+            echo "AK_DEVICE_3=$AK_DEVICE_3"
+            echo "AK_DEVICE_4=$AK_DEVICE_4"
+          } >> "$GITHUB_ENV"
+
+          echo "device=$DEVICE" >> "$GITHUB_OUTPUT"
+          echo "model=$MODEL_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Show source information
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          echo "===== COMMIT ====="
+          git rev-parse --short HEAD
+
+          echo "===== MAKEFILE VERSION ====="
+          grep -nE "^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)[[:space:]]*=" Makefile || true
+
+          echo "===== DEFCONFIG CHECK ====="
+          ls -lah arch/arm64/configs | grep -E "exynos9810|starlte|star2lte|crownlte" || true
+
+          echo "===== TARGET ====="
+          echo "DEVICE=$DEVICE"
+          echo "MODEL_NAME=$MODEL_NAME"
+          echo "DEVICE_DEFCONFIG=$DEVICE_DEFCONFIG"
+          echo "PLATFORM_VERSION=$PLATFORM_VERSION"
+          echo "ANDROID_MAJOR_VERSION=$ANDROID_MAJOR_VERSION"
+
+      - name: Clean source tree safely
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          echo "===== CLEAN BY GIT RESET/CLEAN =====" | tee clean.log
+          git reset --hard HEAD | tee -a clean.log
+          git clean -fdx | tee -a clean.log
+
+          rm -f "arch/arm64/configs/$TEMP_DEFCONFIG"
+          rm -f .config .config.old
+          rm -rf include/config include/generated arch/arm64/include/generated
+          rm -f build.log defconfig.log olddefconfig.log
+
+          echo "Clean done" | tee -a clean.log
+
+
+      - name: Patch kernel release to G960NK v73 KSU Next + SuSFS CLOCK_MONOTONIC VDSO Hook L59
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          echo "===== BEFORE VERSION PATCH ====="
+          grep -nE "^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)[[:space:]]*=" Makefile || true
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          makefile = Path("Makefile")
+          text = makefile.read_text(errors="ignore")
+
+          text = re.sub(r"^SUBLEVEL\s*=\s*.*$", "SUBLEVEL = 220", text, flags=re.MULTILINE)
+
+          if re.search(r"^EXTRAVERSION\s*=", text, flags=re.MULTILINE):
+              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v73-ksunext-susfs-monotonic-vdso-l59", text, flags=re.MULTILINE)
+          else:
+              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v73-ksunext-susfs-monotonic-vdso-l59", 1)
+
+          makefile.write_text(text)
+          PY
+
+          echo "===== AFTER VERSION PATCH ====="
+          grep -nE "^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)[[:space:]]*=" Makefile || true
+
+          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v73-ksunext-susfs-monotonic-vdso-l59"
+
+
+      - name: Patch clang external assembler prefix
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          echo "===== BEFORE PATCH: clang prefix lines ====="
+          grep -RIn -- "--prefix=" Makefile scripts arch/arm64 2>/dev/null || true
+          grep -RIn -- "gcc-toolchain" Makefile scripts arch/arm64 2>/dev/null || true
+          grep -RIn -- "no-integrated-as" Makefile scripts arch/arm64 2>/dev/null || true
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          search_roots = [
+              Path("Makefile"),
+              Path("scripts"),
+              Path("arch/arm64"),
+          ]
+
+          files = []
+          for root in search_roots:
+              if root.is_file():
+                  files.append(root)
+              elif root.is_dir():
+                  files.extend([p for p in root.rglob("*") if p.is_file()])
+
+          replacements = {
+              "--prefix=$(GCC_TOOLCHAIN_DIR)": "--prefix=$(GCC_TOOLCHAIN_DIR)$(notdir $(CROSS_COMPILE))",
+              "--prefix=$(dir $(shell which $(CROSS_COMPILE)elfedit))": "--prefix=$(dir $(shell which $(CROSS_COMPILE)elfedit))$(notdir $(CROSS_COMPILE))",
+              "--prefix=$(dir $(shell which $(CROSS_COMPILE)gcc))": "--prefix=$(dir $(shell which $(CROSS_COMPILE)gcc))$(notdir $(CROSS_COMPILE))",
+              "--prefix=$(dir $(shell which $(CROSS_COMPILE)ld))": "--prefix=$(dir $(shell which $(CROSS_COMPILE)ld))$(notdir $(CROSS_COMPILE))",
+          }
+
+          changed = []
+
+          for path in files:
+              try:
+                  text = path.read_text(errors="ignore")
+              except Exception:
+                  continue
+
+              original = text
+
+              for old, new in replacements.items():
+                  if old in text and new not in text:
+                      text = text.replace(old, new)
+
+              if text != original:
+                  path.write_text(text)
+                  changed.append(str(path))
+
+          print("Changed files:")
+          if changed:
+              for item in changed:
+                  print(" -", item)
+          else:
+              print(" - none")
+          PY
+
+          echo "===== AFTER PATCH: clang prefix lines ====="
+          grep -RIn -- "--prefix=" Makefile scripts arch/arm64 2>/dev/null || true
+          grep -RIn -- "gcc-toolchain" Makefile scripts arch/arm64 2>/dev/null || true
+          grep -RIn -- "no-integrated-as" Makefile scripts arch/arm64 2>/dev/null || true
+
+          echo "===== CHECK TARGET BINUTILS ====="
+          command -v aarch64-linux-gnu-as
+          command -v aarch64-linux-gnu-ld.bfd
+          command -v aarch64-linux-gnu-gcc
+
+
+      - name: Add KernelSU Next official legacy
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          echo "===== ADD KERNELSU NEXT OFFICIAL LEGACY v11 ====="
+          rm -rf KernelSU KernelSU-Next drivers/kernelsu kernel/kernelsu
+          rm -f ksu-path.log ksu-files-preview.txt ksu-markers.txt
+
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+
+          echo "===== KERNELSU NEXT PATH AUTODETECT ====="
+          KSU_DIR=""
+
+          for CANDIDATE in KernelSU-Next KernelSU drivers/kernelsu kernel/kernelsu; do
+            if [ -e "$CANDIDATE" ]; then
+              KSU_DIR="$CANDIDATE"
+              break
+            fi
+          done
+
+          if [ -n "$KSU_DIR" ]; then
+            echo "KSU_DIR=$KSU_DIR" | tee ksu-path.log
+            find "$KSU_DIR" -maxdepth 3 -type f \( -name "Kconfig" -o -name "Makefile" -o -name "*.c" -o -name "*.h" \) > ksu-files-preview.txt || true
+            sed -n '1,180p' ksu-files-preview.txt || true
+          else
+            echo "KernelSU Next directory not found by common names."
+            echo "This can still be valid if setup.sh patched source directly."
+            find . -maxdepth 2 -type d | sort > ksu-files-preview.txt || true
+            sed -n '1,180p' ksu-files-preview.txt || true
+          fi
+
+          echo "===== KSU NEXT PATCH MARKERS ====="
+          grep -RIn "KernelSU-Next\|KernelSU\|CONFIG_KSU\|source.*KSU\|kernelsu" Kconfig Makefile drivers fs kernel security arch > ksu-markers.txt 2>/dev/null || true
+          sed -n '1,260p' ksu-markers.txt || true
+
+          echo "===== VERIFY KSU NEXT INTEGRATION ====="
+          if [ ! -s ksu-markers.txt ]; then
+            echo "ERROR: KernelSU Next setup completed but no KSU marker was found"
+            exit 1
+          fi
+
+          echo "KernelSU Next setup markers found."
+
+
+
+      - name: Patch KernelSU Next manual hooks
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          echo "===== PATCH KERNELSU NEXT MANUAL HOOKS v12 ====="
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def read(path):
+              p = Path(path)
+              if not p.exists():
+                  print(f"[SKIP] {path}: missing")
+                  return None
+              return p.read_text(errors="ignore")
+
+          def write(path, text):
+              Path(path).write_text(text)
+
+          def insert_before(path, marker, block, tag):
+              text = read(path)
+              if text is None:
+                  return False
+              if tag in text:
+                  print(f"[OK] {path}: {tag} already present")
+                  return True
+              idx = text.find(marker)
+              if idx < 0:
+                  print(f"[WARN] {path}: marker not found for {tag}: {marker}")
+                  return False
+              text = text[:idx] + block + "\n" + text[idx:]
+              write(path, text)
+              print(f"[PATCH] {path}: inserted {tag}")
+              return True
+
+          def find_open_brace(text, start):
+              brace = text.find("{", start)
+              return brace
+
+          def insert_after_brace(path, func_marker, block, tag):
+              text = read(path)
+              if text is None:
+                  return False
+              if tag in text:
+                  print(f"[OK] {path}: {tag} already present")
+                  return True
+              start = text.find(func_marker)
+              if start < 0:
+                  print(f"[WARN] {path}: function marker not found for {tag}: {func_marker}")
+                  return False
+              brace = find_open_brace(text, start)
+              if brace < 0:
+                  print(f"[WARN] {path}: opening brace not found for {tag}")
+                  return False
+              insert_at = brace + 1
+              text = text[:insert_at] + "\n" + block + text[insert_at:]
+              write(path, text)
+              print(f"[PATCH] {path}: inserted {tag}")
+              return True
+
+          def insert_after_in_func(path, func_marker, after_marker, block, tag):
+              text = read(path)
+              if text is None:
+                  return False
+              if tag in text:
+                  print(f"[OK] {path}: {tag} already present")
+                  return True
+              start = text.find(func_marker)
+              if start < 0:
+                  print(f"[WARN] {path}: function marker not found for {tag}: {func_marker}")
+                  return False
+              idx = text.find(after_marker, start)
+              if idx < 0:
+                  print(f"[WARN] {path}: inner marker not found for {tag}: {after_marker}")
+                  return False
+              insert_at = idx + len(after_marker)
+              text = text[:insert_at] + "\n" + block + text[insert_at:]
+              write(path, text)
+              print(f"[PATCH] {path}: inserted {tag}")
+              return True
+
+          # 1) fs/exec.c - native do_execve hook
+          exec_extern = """#ifdef CONFIG_KSU
+          /* KSU_NEXT_MANUAL_HOOK_EXEC_EXTERN */
+          __attribute__((hot))
+          extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
+                          void *argv, void *envp, int *flags);
+          #endif
+          """
+          insert_before(
+              "fs/exec.c",
+              "int do_execve(struct filename *filename",
+              exec_extern,
+              "KSU_NEXT_MANUAL_HOOK_EXEC_EXTERN",
+          )
+
+          exec_call = """#ifdef CONFIG_KSU
+          \t/* KSU_NEXT_MANUAL_HOOK_EXEC_CALL */
+          \tksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
+          #endif"""
+          ok_exec = insert_after_in_func(
+              "fs/exec.c",
+              "int do_execve(struct filename *filename",
+              "struct user_arg_ptr envp = { .ptr.native = __envp };",
+              exec_call,
+              "KSU_NEXT_MANUAL_HOOK_EXEC_CALL",
+          )
+          if not ok_exec:
+              print("[WARN] fs/exec.c: native do_execve hook was not applied; continuing because reboot hook is the Kbuild gate")
+
+          # 2) fs/open.c - faccessat hook
+          open_extern = """#ifdef CONFIG_KSU
+          /* KSU_NEXT_MANUAL_HOOK_FACCESSAT_EXTERN */
+          __attribute__((hot))
+          extern int ksu_handle_faccessat(int *dfd, const char __user **filename_user,
+                          int *mode, int *flags);
+          #endif
+
+          """
+          open_text = read("fs/open.c")
+          if open_text is not None:
+              if "KSU_NEXT_MANUAL_HOOK_FACCESSAT_EXTERN" not in open_text:
+                  markers = ["SYSCALL_DEFINE3(faccessat", "long do_faccessat("]
+                  placed = False
+                  for m in markers:
+                      if m in open_text:
+                          open_text = open_text.replace(m, open_extern + m, 1)
+                          placed = True
+                          break
+                  if placed:
+                      write("fs/open.c", open_text)
+                      print("[PATCH] fs/open.c: inserted KSU_NEXT_MANUAL_HOOK_FACCESSAT_EXTERN")
+                  else:
+                      print("[WARN] fs/open.c: faccessat marker not found for extern")
+              else:
+                  print("[OK] fs/open.c: faccessat extern already present")
+
+          open_call = """#ifdef CONFIG_KSU
+          \t/* KSU_NEXT_MANUAL_HOOK_FACCESSAT_CALL */
+          \tksu_handle_faccessat(&dfd, &filename, &mode, NULL);
+          #endif"""
+          ok_open = insert_after_in_func(
+              "fs/open.c",
+              "SYSCALL_DEFINE3(faccessat",
+              "unsigned int lookup_flags = LOOKUP_FOLLOW;",
+              open_call,
+              "KSU_NEXT_MANUAL_HOOK_FACCESSAT_CALL",
+          )
+          if not ok_open:
+              ok_open = insert_after_in_func(
+                  "fs/open.c",
+                  "long do_faccessat(",
+                  "unsigned int lookup_flags = LOOKUP_FOLLOW;",
+                  open_call,
+                  "KSU_NEXT_MANUAL_HOOK_FACCESSAT_CALL",
+              )
+          if not ok_open:
+              print("[WARN] fs/open.c: faccessat hook was not applied")
+
+          # 3) fs/read_write.c - sys_read hook
+          read_extern = """#ifdef CONFIG_KSU
+          /* KSU_NEXT_MANUAL_HOOK_READ_EXTERN */
+          extern bool ksu_vfs_read_hook __read_mostly;
+          extern __attribute__((cold)) int ksu_handle_sys_read(unsigned int fd,
+                          char __user **buf_ptr, size_t *count_ptr);
+          #endif
+
+          """
+          rw_text = read("fs/read_write.c")
+          if rw_text is not None:
+              if "KSU_NEXT_MANUAL_HOOK_READ_EXTERN" not in rw_text:
+                  marker = "SYSCALL_DEFINE3(read"
+                  if marker in rw_text:
+                      rw_text = rw_text.replace(marker, read_extern + marker, 1)
+                      write("fs/read_write.c", rw_text)
+                      print("[PATCH] fs/read_write.c: inserted KSU_NEXT_MANUAL_HOOK_READ_EXTERN")
+                  else:
+                      print("[WARN] fs/read_write.c: SYSCALL_DEFINE3(read marker not found for extern")
+              else:
+                  print("[OK] fs/read_write.c: read extern already present")
+
+          read_call = """#ifdef CONFIG_KSU
+          \t/* KSU_NEXT_MANUAL_HOOK_READ_CALL */
+          \tif (unlikely(ksu_vfs_read_hook))
+          \t\tksu_handle_sys_read(fd, (char __user **)&buf, &count);
+          #endif"""
+          ok_read = insert_after_in_func(
+              "fs/read_write.c",
+              "SYSCALL_DEFINE3(read",
+              "ssize_t ret = -EBADF;",
+              read_call,
+              "KSU_NEXT_MANUAL_HOOK_READ_CALL",
+          )
+          if not ok_read:
+              print("[WARN] fs/read_write.c: read hook was not applied")
+
+          # 4) fs/stat.c - newfstatat hook
+          stat_extern = """#ifdef CONFIG_KSU
+          /* KSU_NEXT_MANUAL_HOOK_STAT_EXTERN */
+          __attribute__((hot))
+          extern int ksu_handle_stat(int *dfd, const char __user **filename_user,
+                          int *flags);
+          #endif
+
+          """
+          stat_text = read("fs/stat.c")
+          if stat_text is not None:
+              if "KSU_NEXT_MANUAL_HOOK_STAT_EXTERN" not in stat_text:
+                  markers = ["SYSCALL_DEFINE4(newfstatat", "int vfs_fstatat(", "int vfs_statx("]
+                  placed = False
+                  for m in markers:
+                      if m in stat_text:
+                          stat_text = stat_text.replace(m, stat_extern + m, 1)
+                          placed = True
+                          break
+                  if placed:
+                      write("fs/stat.c", stat_text)
+                      print("[PATCH] fs/stat.c: inserted KSU_NEXT_MANUAL_HOOK_STAT_EXTERN")
+                  else:
+                      print("[WARN] fs/stat.c: stat marker not found for extern")
+              else:
+                  print("[OK] fs/stat.c: stat extern already present")
+
+          stat_call = """#ifdef CONFIG_KSU
+          \t/* KSU_NEXT_MANUAL_HOOK_STAT_CALL */
+          \tksu_handle_stat(&dfd, &filename, &flag);
+          #endif"""
+          ok_stat = insert_after_in_func(
+              "fs/stat.c",
+              "SYSCALL_DEFINE4(newfstatat",
+              "int error;",
+              stat_call,
+              "KSU_NEXT_MANUAL_HOOK_STAT_CALL",
+          )
+          if not ok_stat:
+              # fallback for vfs_fstatat uses variable 'flag'
+              ok_stat = insert_after_in_func(
+                  "fs/stat.c",
+                  "int vfs_fstatat(",
+                  "unsigned int lookup_flags = 0;",
+                  stat_call,
+                  "KSU_NEXT_MANUAL_HOOK_STAT_CALL",
+              )
+          if not ok_stat:
+              print("[WARN] fs/stat.c: stat hook was not applied")
+
+          # 5) kernel/reboot.c - this is required by KernelSU-Next Kbuild to accept manual mode
+          reboot_extern = """#ifdef CONFIG_KSU
+          /* KSU_NEXT_MANUAL_HOOK_REBOOT_EXTERN */
+          extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);
+          #endif
+
+          """
+          insert_before(
+              "kernel/reboot.c",
+              "SYSCALL_DEFINE4(reboot",
+              reboot_extern,
+              "KSU_NEXT_MANUAL_HOOK_REBOOT_EXTERN",
+          )
+
+          reboot_call = """#ifdef CONFIG_KSU
+          \t/* KSU_NEXT_MANUAL_HOOK_REBOOT_CALL */
+          \tksu_handle_sys_reboot(magic1, magic2, cmd, &arg);
+          #endif"""
+          ok_reboot = insert_after_in_func(
+              "kernel/reboot.c",
+              "SYSCALL_DEFINE4(reboot",
+              "int ret = 0;",
+              reboot_call,
+              "KSU_NEXT_MANUAL_HOOK_REBOOT_CALL",
+          )
+          if not ok_reboot:
+              ok_reboot = insert_after_brace(
+                  "kernel/reboot.c",
+                  "SYSCALL_DEFINE4(reboot",
+                  reboot_call,
+                  "KSU_NEXT_MANUAL_HOOK_REBOOT_CALL",
+              )
+
+          if not ok_reboot:
+              raise SystemExit("ERROR: kernel/reboot.c was not patched; KernelSU-Next Kbuild will fail manual mode")
+
+          print("===== MANUAL HOOK PATCH SUMMARY =====")
+          for f in ["fs/exec.c", "fs/open.c", "fs/read_write.c", "fs/stat.c", "kernel/reboot.c"]:
+              text = read(f)
+              if text is None:
+                  continue
+              count = text.count("KSU_NEXT_MANUAL_HOOK_")
+              print(f"{f}: {count} KSU_NEXT_MANUAL_HOOK markers")
+
+          reboot_text = read("kernel/reboot.c") or ""
+          if "ksu_handle_sys_reboot" not in reboot_text:
+              raise SystemExit("ERROR: ksu_handle_sys_reboot marker missing after patch")
+
+          print("Manual hook patch done.")
+          PY
+
+          echo "===== VERIFY MANUAL HOOK MARKERS ====="
+          grep -RIn "KSU_NEXT_MANUAL_HOOK\|ksu_handle_sys_reboot\|ksu_handle_execveat\|ksu_handle_faccessat\|ksu_handle_sys_read\|ksu_handle_stat" \
+            fs/exec.c fs/open.c fs/read_write.c fs/stat.c kernel/reboot.c 2>/dev/null || true
+
+
+
+      - name: Backport path_umount for KernelSU Next
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          echo "===== BACKPORT path_umount FOR KERNELSU NEXT v13 ====="
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          ns = Path("fs/namespace.c")
+          internal = Path("fs/internal.h")
+
+          if not ns.exists():
+              raise SystemExit("ERROR: fs/namespace.c not found")
+
+          text = ns.read_text(errors="ignore")
+
+          if "KSU_NEXT_BACKPORT_PATH_UMOUNT" in text or "int path_umount(struct path *path, int flags)" in text:
+              print("[OK] fs/namespace.c already has path_umount backport")
+          else:
+              marker = "static bool is_mnt_ns_file(struct dentry *dentry)"
+              if marker not in text:
+                  raise SystemExit("ERROR: marker not found in fs/namespace.c: static bool is_mnt_ns_file")
+
+              block = '''
+          /*
+           * KSU_NEXT_BACKPORT_PATH_UMOUNT
+           *
+           * Linux 4.9 does not provide path_umount(), but KernelSU Next expects it.
+           * Backport a minimal wrapper using the existing do_umount() path from this
+           * kernel tree. This mirrors newer VFS behavior closely enough for KSU Next.
+           */
+          #ifdef CONFIG_KSU
+          static int ksu_next_can_umount(const struct path *path, int flags)
+          {
+          	struct mount *mnt = real_mount(path->mnt);
+
+          	if (flags & ~(MNT_FORCE | MNT_DETACH | MNT_EXPIRE | UMOUNT_NOFOLLOW))
+          		return -EINVAL;
+          	if (!may_mount())
+          		return -EPERM;
+          	if (path->dentry != path->mnt->mnt_root)
+          		return -EINVAL;
+          	if (!check_mnt(mnt))
+          		return -EINVAL;
+          	if (mnt->mnt.mnt_flags & MNT_LOCKED)
+          		return -EINVAL;
+          	if ((flags & MNT_FORCE) && !capable(CAP_SYS_ADMIN))
+          		return -EPERM;
+
+          	return 0;
+          }
+
+          int path_umount(struct path *path, int flags)
+          {
+          	struct mount *mnt = real_mount(path->mnt);
+          	int ret;
+
+          	ret = ksu_next_can_umount(path, flags);
+          	if (!ret)
+          		ret = do_umount(mnt, flags);
+
+          	dput(path->dentry);
+          	mntput_no_expire(mnt);
+
+          	return ret;
+          }
+          #endif /* CONFIG_KSU */
+
+          '''
+              text = text.replace(marker, block + marker, 1)
+              ns.write_text(text)
+              print("[PATCH] fs/namespace.c: added CONFIG_KSU path_umount backport")
+
+          if internal.exists():
+              itext = internal.read_text(errors="ignore")
+              proto = "int path_umount(struct path *path, int flags);"
+              if proto in itext:
+                  print("[OK] fs/internal.h already has path_umount prototype")
+              else:
+                  marker2 = "extern void __init mnt_init(void);"
+                  if marker2 in itext:
+                      itext = itext.replace(marker2, marker2 + "\n#ifdef CONFIG_KSU\n" + proto + "\n#endif", 1)
+                  else:
+                      itext += "\n#ifdef CONFIG_KSU\n" + proto + "\n#endif\n"
+                  internal.write_text(itext)
+                  print("[PATCH] fs/internal.h: added path_umount prototype")
+          else:
+              print("[WARN] fs/internal.h not found; skipping prototype")
+
+          verify = ns.read_text(errors="ignore")
+          required = ["do_umount(", "check_mnt(", "may_mount(", "mntput_no_expire("]
+          missing = [item for item in required if item not in verify]
+          if missing:
+              print("[WARN] fs/namespace.c may be missing symbols used by backport:", ", ".join(missing))
+          else:
+              print("[OK] fs/namespace.c contains do_umount/check_mnt/may_mount/mntput_no_expire")
+
+          if "int path_umount(struct path *path, int flags)" not in verify:
+              raise SystemExit("ERROR: path_umount backport missing after patch")
+          PY
+
+          echo "===== VERIFY path_umount PATCH ====="
+          grep -RIn "KSU_NEXT_BACKPORT_PATH_UMOUNT\|int path_umount(struct path \*path, int flags)\|ksu_next_can_umount" fs/namespace.c fs/internal.h 2>/dev/null || true
+
+
+
+      - name: Add SuSFS 4.9 patches bridge level 15
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -eo pipefail
+
+          echo "===== ADD SUSFS BRIDGE LEVEL 8 FOR EXYNOS9810 KERNEL 4.9 ====="
+          echo "This workflow must NOT create susfs-ksunext-dryrun.log or susfs-ksu-fallback-dryrun.log; those belong to old v15."
+          rm -rf susfs4ksu
+          rm -f susfs-*.log susfs-*.txt SuSFS-build-info.txt
+          find . \( -name "*.rej" -o -name "*.orig" \) -type f -delete 2>/dev/null || true
+
+          echo "===== CLONE SUSFS4KSU KERNEL 4.9 PATCHSET ====="
+          if ! git clone --depth=1 -b "$SUSFS_BRANCH" "$SUSFS_REPO" susfs4ksu 2>&1 | tee susfs-clone.log; then
+            echo "Primary GitLab clone failed, trying GitHub mirror main branch" | tee -a susfs-clone.log
+            git clone --depth=1 https://github.com/Star-Seven/susfs4ksu.git susfs4ksu 2>&1 | tee -a susfs-clone.log
+          fi
+
+          echo "===== SUSFS PATCH FILES ====="
+          find susfs4ksu/kernel_patches -maxdepth 3 -type f | sort | tee susfs-files.txt
+
+          echo "===== COPY SUSFS CORE FILES ====="
+          if [ ! -d susfs4ksu/kernel_patches/fs ]; then
+            echo "ERROR: susfs4ksu/kernel_patches/fs not found"
+            exit 1
+          fi
+          if [ ! -d susfs4ksu/kernel_patches/include/linux ]; then
+            echo "ERROR: susfs4ksu/kernel_patches/include/linux not found"
+            exit 1
+          fi
+
+          cp -av susfs4ksu/kernel_patches/fs/* fs/ 2>&1 | tee susfs-copy.log
+          cp -av susfs4ksu/kernel_patches/include/linux/* include/linux/ 2>&1 | tee -a susfs-copy.log
+
+          if [ ! -f fs/susfs.c ]; then
+            echo "ERROR: fs/susfs.c was not copied"
+            exit 1
+          fi
+          if [ ! -f include/linux/susfs.h ]; then
+            echo "ERROR: include/linux/susfs.h was not copied"
+            exit 1
+          fi
+
+          echo "===== PATCH SUSFS CORE FOR KERNELSU NEXT LEGACY L59 ====="
+          python3 - <<'PY' 2>&1 | tee susfs-core-compat-l59.log
+          from pathlib import Path
+
+          p = Path("fs/susfs.c")
+          if not p.exists():
+              raise SystemExit("ERROR: fs/susfs.c not found")
+          text = p.read_text(errors="ignore")
+
+          old_include = '#include "../drivers/kernelsu/core_hook.h"'
+          if old_include in text:
+              text = text.replace(old_include, '/* KSU_NEXT_SUSFS_BRIDGE_L59_REMOVED_OLD_CORE_HOOK */')
+              print("[PATCH] fs/susfs.c: removed old KernelSU core_hook.h include")
+          else:
+              print("[OK] fs/susfs.c: old core_hook.h include not present")
+
+          compat_token = "KSU_NEXT_SUSFS_BRIDGE_L59_TRY_UMOUNT_COMPAT"
+          if compat_token not in text:
+              compat = (
+                  "\n#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT\n"
+                  "/* KSU_NEXT_SUSFS_BRIDGE_L59_TRY_UMOUNT_COMPAT */\n"
+                  "static void try_umount(const char *mnt, bool check_mnt, int flags)\n"
+                  "{\n"
+                  "\tstruct path path;\n"
+                  "\tint err;\n"
+                  "\n"
+                  "\tif (!mnt)\n"
+                  "\t\treturn;\n"
+                  "\n"
+                  "\terr = kern_path(mnt, 0, &path);\n"
+                  "\tif (err)\n"
+                  "\t\treturn;\n"
+                  "\n"
+                  "\tif (check_mnt && path.dentry != path.mnt->mnt_root) {\n"
+                  "\t\tpath_put(&path);\n"
+                  "\t\treturn;\n"
+                  "\t}\n"
+                  "\n"
+                  "\tpath_umount(&path, flags);\n"
+                  "}\n"
+                  "#endif\n"
+              )
+              marker = "spinlock_t susfs_spin_lock;"
+              if marker in text:
+                  text = text.replace(marker, compat + "\n" + marker, 1)
+              else:
+                  lines = text.splitlines(True)
+                  pos = 0
+                  for i, line in enumerate(lines[:80]):
+                      if line.lstrip().startswith("#include"):
+                          pos = i + 1
+                  lines.insert(pos, compat + "\n")
+                  text = "".join(lines)
+              print("[PATCH] fs/susfs.c: added KernelSU-Next try_umount compatibility adapter")
+          else:
+              print("[OK] fs/susfs.c: KernelSU-Next try_umount compatibility adapter already present")
+
+          p.write_text(text)
+
+          print("===== SUSFS CORE COMPAT MARKERS =====")
+          for token in [
+              "KSU_NEXT_SUSFS_BRIDGE_L59_REMOVED_OLD_CORE_HOOK",
+              "KSU_NEXT_SUSFS_BRIDGE_L59_TRY_UMOUNT_COMPAT",
+          ]:
+              print(f"fs/susfs.c: {token}=" + ("yes" if token in text else "no"))
+          PY
+
+          echo "===== VERIFY SUSFS CORE COMPAT L59 ====="
+          grep -n "core_hook.h\|KSU_NEXT_SUSFS_BRIDGE_L59\|static void try_umount" fs/susfs.c | tee susfs-core-compat-verify-l59.log || true
+
+          echo "===== PATCH KERNEL SOURCE FOR SUSFS 4.9 FIRST ====="
+          KERNEL_PATCH=""
+          for CANDIDATE in \
+            susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.9.patch \
+            susfs4ksu/kernel_patches/50_add_susfs_in_kernel_4.9.patch \
+            susfs4ksu/kernel_patches/50_add_susfs_in_kernel.patch
+          do
+            if [ -f "$CANDIDATE" ]; then
+              KERNEL_PATCH="$CANDIDATE"
+              break
+            fi
+          done
+
+          if [ -z "$KERNEL_PATCH" ]; then
+            KERNEL_PATCH="$(find susfs4ksu/kernel_patches -maxdepth 1 -type f -name '*susfs*4.9*.patch' | head -n 1 || true)"
+          fi
+
+          if [ -z "$KERNEL_PATCH" ] || [ ! -f "$KERNEL_PATCH" ]; then
+            echo "ERROR: SuSFS kernel 4.9 patch not found"
+            find susfs4ksu/kernel_patches -maxdepth 2 -type f | sort
+            exit 1
+          fi
+
+          echo "Using kernel patch: $KERNEL_PATCH" | tee susfs-kernel-patch.txt
+          echo "KERNEL_PATCH=$KERNEL_PATCH" >> "$GITHUB_ENV"
+
+          echo "===== CREATE EXYNOS9810-SAFE SUSFS PATCH ====="
+          export KERNEL_PATCH
+          python3 - <<'PY' 2>&1 | tee susfs-kernel-filter-l59.log
+          from pathlib import Path
+          import os
+
+          src = Path(os.environ["KERNEL_PATCH"])
+          text = src.read_text(errors="ignore").splitlines(True)
+          chunks = []
+          cur = []
+          for line in text:
+              if line.startswith("diff --git "):
+                  if cur:
+                      chunks.append(cur)
+                  cur = [line]
+              else:
+                  cur.append(line)
+          if cur:
+              chunks.append(cur)
+
+          skip_paths = {
+              "fs/readdir.c",
+              "include/linux/fs.h",
+          }
+          kept = []
+          skipped = []
+          for chunk in chunks:
+              header = chunk[0] if chunk else ""
+              should_skip = any((f" a/{p}" in header and f" b/{p}" in header) for p in skip_paths)
+              if should_skip:
+                  skipped.append(header.strip())
+              else:
+                  kept.extend(chunk)
+
+          Path("susfs-kernel-auto-l59.patch").write_text("".join(kept))
+          Path("susfs-kernel-manual-l59.txt").write_text("\n".join(skipped) + "\n")
+
+          print("Skipped manual-compat file patches:")
+          for item in skipped:
+              print(" -", item)
+          print(f"Kept {len(chunks) - len(skipped)} patch chunks, skipped {len(skipped)} chunks")
+          PY
+
+          echo "===== APPLY SUSFS KERNEL PATCH EXCEPT MANUAL-COMPAT FILES ====="
+          if patch -p1 --dry-run < susfs-kernel-auto-l59.patch 2>&1 | tee susfs-kernel-dryrun.log; then
+            patch -p1 < susfs-kernel-auto-l59.patch 2>&1 | tee susfs-kernel-apply.log
+          else
+            echo "ERROR: SuSFS kernel auto patch failed outside known Exynos9810 manual files." | tee -a susfs-kernel-dryrun.log
+            find . \( -name "*.rej" -o -name "*.orig" \) -type f | sort | tee susfs-rejects.txt
+            exit 1
+          fi
+
+          echo "===== APPLY MANUAL EXYNOS9810 SUSFS COMPAT PATCHES ====="
+          python3 - <<'PY' 2>&1 | tee susfs-kernel-manual-exynos9810-l59.log
+          from pathlib import Path
+
+          def read(path):
+              p = Path(path)
+              if not p.exists():
+                  raise SystemExit(f"ERROR: missing {path}")
+              return p.read_text(errors="ignore")
+
+          def write(path, text):
+              Path(path).write_text(text)
+
+          def add_guarded_include(path, block, token):
+              text = read(path)
+              if token in text:
+                  print(f"[OK] {path}: include token already present")
+                  return text
+              lines = text.splitlines(True)
+              pos = 0
+              for i, line in enumerate(lines[:100]):
+                  if line.lstrip().startswith("#include"):
+                      pos = i + 1
+              lines.insert(pos, block)
+              text = "".join(lines)
+              write(path, text)
+              print(f"[PATCH] {path}: inserted guarded include block")
+              return text
+
+          def insert_after_marker_in_function(path, func_marker, after_marker, block, token):
+              text = read(path)
+              if token in text:
+                  print(f"[OK] {path}: {token} already present")
+                  return text
+
+              func_start = text.find(func_marker)
+              if func_start < 0:
+                  raise SystemExit(f"ERROR: function marker not found in {path}: {func_marker!r}")
+
+              brace = text.find("{", func_start)
+              if brace < 0:
+                  raise SystemExit(f"ERROR: opening brace not found for {func_marker!r} in {path}")
+
+              depth = 0
+              func_end = None
+              for i in range(brace, len(text)):
+                  c = text[i]
+                  if c == "{":
+                      depth += 1
+                  elif c == "}":
+                      depth -= 1
+                      if depth == 0:
+                          func_end = i
+                          break
+              if func_end is None:
+                  raise SystemExit(f"ERROR: function end not found for {func_marker!r} in {path}")
+
+              idx = text.find(after_marker, brace, func_end)
+              if idx < 0:
+                  # Samsung Exynos9810 fs/readdir.c does not have verify_dirent_name();
+                  # use the first bounds check in filldir64 as the stable fallback.
+                  fallbacks = [
+                      "if (reclen > buf->count)",
+                      "dirent = buf->previous;",
+                      "dirent = buf->current_dir;",
+                  ]
+                  for fallback in fallbacks:
+                      idx = text.find(fallback, brace, func_end)
+                      if idx >= 0:
+                          print(f"[INFO] {path}: primary marker not found; using fallback marker {fallback!r}")
+                          break
+              else:
+                  idx += len(after_marker)
+
+              if idx < 0:
+                  raise SystemExit(f"ERROR: no safe insertion marker found in {path} for {token}")
+
+              # If the fallback marker is a statement prefix, insert before it. If primary marker matched,
+              # idx already points after the marker. This keeps the hide check near the start of filldir64.
+              text = text[:idx] + block + text[idx:]
+              write(path, text)
+              print(f"[PATCH] {path}: inserted {token} inside {func_marker}")
+              return text
+
+          def insert_inside_struct(path, struct_name, block, token):
+              text = read(path)
+              start = text.find(f"struct {struct_name} {{")
+              if start < 0:
+                  raise SystemExit(f"ERROR: struct {struct_name} not found in {path}")
+
+              lines = text.splitlines(True)
+              byte = 0
+              start_line = None
+              for i, line in enumerate(lines):
+                  if byte <= start < byte + len(line):
+                      start_line = i
+                      break
+                  byte += len(line)
+              if start_line is None:
+                  raise SystemExit(f"ERROR: start line for struct {struct_name} not found")
+
+              depth = 0
+              end_line = None
+              for i in range(start_line, len(lines)):
+                  depth += lines[i].count("{")
+                  depth -= lines[i].count("}")
+                  if i > start_line and depth == 0 and lines[i].strip().startswith("};"):
+                      end_line = i
+                      break
+              if end_line is None:
+                  raise SystemExit(f"ERROR: end of struct {struct_name} not found")
+
+              body = "".join(lines[start_line:end_line + 1])
+              if token in body:
+                  print(f"[OK] {path}: struct {struct_name} already contains {token}")
+                  return text
+
+              lines.insert(end_line, block)
+              text = "".join(lines)
+              write(path, text)
+              print(f"[PATCH] {path}: inserted {token} into struct {struct_name}")
+              return text
+
+          # Manual replacement for failed fs/readdir.c hunk #2.
+          readdir_include = "#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n/* SUSFS_EXYNOS9810_L59_READDIR_INCLUDE */\n#include <linux/cred.h>\n#include <linux/susfs.h>\n#endif\n"
+          add_guarded_include("fs/readdir.c", readdir_include, "SUSFS_EXYNOS9810_L59_READDIR_INCLUDE")
+
+          filldir64_block = "\n#ifdef CONFIG_KSU_SUSFS_SUS_PATH\n\t/* SUSFS_EXYNOS9810_L59_FILLDIR64 */\n\tif (likely(current_cred()->user->android_kabi_reserved1 & 16777216) && susfs_sus_ino_for_filldir64(ino)) {\n\t\treturn 0;\n\t}\n#endif\n"
+          insert_after_marker_in_function(
+              "fs/readdir.c",
+              "static int filldir64(struct dir_context *ctx",
+              "buf->error = -EINVAL;",
+              filldir64_block,
+              "SUSFS_EXYNOS9810_L59_FILLDIR64",
+          )
+
+          # Manual replacement for failed include/linux/fs.h inode hunk.
+          inode_block = "#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT\n\t/* SUSFS_EXYNOS9810_L59_INODE_KABI */\n\tu64 android_kabi_reserved1;\n\tu64 android_kabi_reserved2;\n#endif\n"
+          insert_inside_struct(
+              "include/linux/fs.h",
+              "inode",
+              inode_block,
+              "SUSFS_EXYNOS9810_L59_INODE_KABI",
+          )
+
+          # The super_block hunk usually applied; keep this idempotent for vendor offsets.
+          super_block = "#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT\n\t/* SUSFS_EXYNOS9810_L59_SUPERBLOCK_KABI */\n\tu64 android_kabi_reserved1;\n\tu64 android_kabi_reserved2;\n\tu64 android_kabi_reserved3;\n#endif\n"
+          insert_inside_struct(
+              "include/linux/fs.h",
+              "super_block",
+              super_block,
+              "SUSFS_EXYNOS9810_L59_SUPERBLOCK_KABI",
+          )
+
+          print("===== MANUAL SUSFS EXYNOS9810 MARKERS =====")
+          for path in ["fs/readdir.c", "include/linux/fs.h"]:
+              text = read(path)
+              for token in [
+                  "SUSFS_EXYNOS9810_L59_READDIR_INCLUDE",
+                  "SUSFS_EXYNOS9810_L59_FILLDIR64",
+                  "SUSFS_EXYNOS9810_L59_INODE_KABI",
+                  "SUSFS_EXYNOS9810_L59_SUPERBLOCK_KABI",
+              ]:
+                  if token in text:
+                      print(f"{path}: {token}")
+          PY
+
+          echo "===== VERIFY MANUAL SUSFS COMPAT PATCHES ====="
+          grep -RIn "SUSFS_EXYNOS9810_L59\|susfs_sus_ino_for_filldir64\|android_kabi_reserved" fs/readdir.c include/linux/fs.h | tee susfs-kernel-manual-verify-l59.log
+
+          echo "===== LOCATE KERNELSU NEXT ROOT ====="
+          KSU_ROOT=""
+          for CANDIDATE in KernelSU-Next KernelSU; do
+            if [ -d "$CANDIDATE/kernel" ]; then
+              KSU_ROOT="$CANDIDATE"
+              break
+            fi
+          done
+
+          if [ -z "$KSU_ROOT" ]; then
+            echo "ERROR: KernelSU-Next root not found"
+            find . -maxdepth 3 -type d | sort | sed -n '1,160p'
+            exit 1
+          fi
+
+          echo "KSU_ROOT=$KSU_ROOT" | tee susfs-ksu-root.txt
+          echo "KSU_ROOT=$KSU_ROOT" >> "$GITHUB_ENV"
+          export KSU_ROOT
+
+          echo "===== MANUAL KSU NEXT SUSFS BRIDGE LEVEL 5 ====="
+          python3 - <<'PY' 2>&1 | tee susfs-bridge-l59.log
+          from pathlib import Path
+          import os
+          import re
+
+          ksu_root = Path(os.environ.get("KSU_ROOT", "KernelSU-Next"))
+          kdir = ksu_root / "kernel"
+          if not kdir.exists():
+              raise SystemExit(f"ERROR: {kdir} not found")
+
+          def read(path):
+              p = Path(path)
+              if not p.exists():
+                  raise SystemExit(f"ERROR: missing {path}")
+              return p.read_text(errors="ignore")
+
+          def write(path, text):
+              Path(path).write_text(text)
+
+          def insert_before_last(text, marker, block):
+              idx = text.rfind(marker)
+              if idx < 0:
+                  return text + "\n" + block + "\n"
+              return text[:idx] + block + "\n" + text[idx:]
+
+          kconfig = kdir / "Kconfig"
+          ktxt = read(kconfig)
+          if "config KSU_SUSFS" not in ktxt:
+              block = r'''
+          menu "KernelSU - SUSFS"
+
+          config KSU_SUSFS
+          	bool "KernelSU addon - SUSFS"
+          	depends on KSU
+          	default y
+          	help
+          	  Patch and enable SUSFS for KernelSU Next.
+
+          config KSU_SUSFS_HAS_MAGIC_MOUNT
+          	bool "KernelSU SUSFS magic mount support"
+          	depends on KSU_SUSFS
+          	default y
+
+          config KSU_SUSFS_SUS_PATH
+          	bool "Enable suspicious path hiding"
+          	depends on KSU_SUSFS
+          	default y
+
+          config KSU_SUSFS_SUS_MOUNT
+          	bool "Enable suspicious mount hiding"
+          	depends on KSU_SUSFS
+          	default y
+
+          config KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
+          	bool "Auto add KSU default mounts to sus_mount"
+          	depends on KSU_SUSFS_SUS_MOUNT
+          	default y
+
+          config KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
+          	bool "Auto add bind mounts to sus_mount"
+          	depends on KSU_SUSFS_SUS_MOUNT
+          	default y
+
+          config KSU_SUSFS_SUS_KSTAT
+          	bool "Enable suspicious kstat spoofing"
+          	depends on KSU_SUSFS
+          	default y
+
+          config KSU_SUSFS_TRY_UMOUNT
+          	bool "Enable SuSFS try_umount list"
+          	depends on KSU_SUSFS
+          	default y
+
+          config KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
+          	bool "Auto add bind mounts to SuSFS try_umount"
+          	depends on KSU_SUSFS_TRY_UMOUNT
+          	default y
+
+          config KSU_SUSFS_SPOOF_UNAME
+          	bool "Enable uname spoofing"
+          	depends on KSU_SUSFS
+          	default n
+
+          config KSU_SUSFS_ENABLE_LOG
+          	bool "Enable SUSFS kernel log"
+          	depends on KSU_SUSFS
+          	default y
+
+          config KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+          	bool "Hide KSU/SUSFS symbols"
+          	depends on KSU_SUSFS
+          	default y
+
+          config KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+          	bool "Spoof cmdline or bootconfig"
+          	depends on KSU_SUSFS
+          	default n
+
+          config KSU_SUSFS_OPEN_REDIRECT
+          	bool "Enable open redirect"
+          	depends on KSU_SUSFS
+          	default n
+
+          config KSU_SUSFS_SUS_SU
+          	bool "Enable SUS-SU runtime mode"
+          	depends on KSU_SUSFS && KPROBES
+          	default n
+
+          endmenu
+          '''
+              ktxt = insert_before_last(ktxt, "endmenu", block)
+              write(kconfig, ktxt)
+              print(f"[PATCH] {kconfig}: added KernelSU - SUSFS Kconfig block")
+          else:
+              print(f"[OK] {kconfig}: CONFIG_KSU_SUSFS already present")
+
+          kbuild = kdir / "Kbuild"
+          if not kbuild.exists():
+              kbuild = kdir / "Makefile"
+          btxt = read(kbuild)
+          if "KSU_NEXT_SUSFS_BRIDGE_L59" not in btxt:
+              btxt += r'''
+
+          # KSU_NEXT_SUSFS_BRIDGE_L59
+          ccflags-y += -I$(srctree)/include
+          ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
+          $(eval SUSFS_VERSION=$(shell grep -E '^#define SUSFS_VERSION' $(srctree)/include/linux/susfs.h 2>/dev/null | awk '{print $$3}' | tr -d '"'))
+          $(info -- KSU_NEXT_SUSFS_BRIDGE_L59: SUSFS_VERSION=$(SUSFS_VERSION))
+          else
+          $(info -- KSU_NEXT_SUSFS_BRIDGE_L59: fs/susfs.c missing)
+          endif
+          '''
+              write(kbuild, btxt)
+              print(f"[PATCH] {kbuild}: added SuSFS bridge flags")
+          else:
+              print(f"[OK] {kbuild}: bridge already present")
+
+          init = kdir / "core" / "init.c"
+          itxt = read(init)
+          if "KSU_NEXT_SUSFS_BRIDGE_L59_INCLUDE" not in itxt:
+              lines = itxt.splitlines(True)
+              pos = 0
+              for i, line in enumerate(lines[:80]):
+                  if line.lstrip().startswith("#include"):
+                      pos = i + 1
+              inc = "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L59_INCLUDE */\n#include <linux/susfs.h>\nextern void susfs_init(void);\n#endif\n"
+              lines.insert(pos, inc)
+              itxt = "".join(lines)
+          if "KSU_NEXT_SUSFS_BRIDGE_L59_INIT" not in itxt:
+              m = re.search(r"int\s+__init\s+kernelsu_init\s*\([^)]*\)\s*\{", itxt)
+              if not m:
+                  raise SystemExit("ERROR: kernelsu_init() not found in core/init.c")
+              insert = "\n#ifdef CONFIG_KSU_SUSFS\n\t/* KSU_NEXT_SUSFS_BRIDGE_L59_INIT */\n\textern void susfs_init(void);\n\tpr_info(\"susfs: init from KernelSU-Next bridge L59\\n\");\n\tsusfs_init();\n#endif\n"
+              itxt = itxt[:m.end()] + insert + itxt[m.end():]
+          write(init, itxt)
+          # KSU_NEXT_SUSFS_BRIDGE_L59_LOCAL_PROTO_FIX
+          itxt = read(init)
+          fn_pos = itxt.rfind("int __init kernelsu_init", 0, itxt.find("susfs_init();") if "susfs_init();" in itxt else len(itxt))
+          call_pos = itxt.find("susfs_init();", fn_pos if fn_pos >= 0 else 0)
+          if fn_pos >= 0 and call_pos >= 0:
+              visible = itxt[fn_pos:call_pos]
+              if "extern void susfs_init(void);" not in visible:
+                  itxt = itxt[:call_pos] + "\textern void susfs_init(void);\n" + itxt[call_pos:]
+                  write(init, itxt)
+                  print(f"[PATCH] {init}: forced local susfs_init prototype before call")
+          print(f"[PATCH] {init}: added susfs_init bridge")
+
+          dispatch = kdir / "supercall" / "dispatch.c"
+          dtxt = read(dispatch)
+          if "KSU_NEXT_SUSFS_BRIDGE_L59_INCLUDE" not in dtxt:
+              lines = dtxt.splitlines(True)
+              pos = 0
+              for i, line in enumerate(lines[:120]):
+                  if line.lstrip().startswith("#include"):
+                      pos = i + 1
+              inc = "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L59_INCLUDE */\n#include <linux/susfs.h>\n#include <linux/uaccess.h>\n#endif\n"
+              lines.insert(pos, inc)
+              dtxt = "".join(lines)
+
+          if "KSU_NEXT_SUSFS_BRIDGE_L59_HANDLERS" not in dtxt:
+              handler = r'''
+
+          #ifdef CONFIG_KSU_SUSFS
+          /* KSU_NEXT_SUSFS_BRIDGE_L59_HANDLERS */
+          bool susfs_is_allow_su(void)
+          {
+          	if (is_manager())
+          		return true;
+          	return ksu_is_allow_uid_for_current(current_uid().val);
+          }
+
+          #ifdef CONFIG_KSU_SUSFS_SUS_PATH
+          static int do_susfs_add_sus_path(void __user *arg)
+          {
+          	return susfs_add_sus_path((struct st_susfs_sus_path __user *)arg);
+          }
+          #endif
+
+          #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+          static int do_susfs_add_sus_mount(void __user *arg)
+          {
+          	return susfs_add_sus_mount((struct st_susfs_sus_mount __user *)arg);
+          }
+          #endif
+
+          #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+          static int do_susfs_add_sus_kstat(void __user *arg)
+          {
+          	return susfs_add_sus_kstat((struct st_susfs_sus_kstat __user *)arg);
+          }
+          #endif
+
+          #ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+          static int do_susfs_add_try_umount(void __user *arg)
+          {
+          	return susfs_add_try_umount((struct st_susfs_try_umount __user *)arg);
+          }
+          #endif
+
+          #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+          static int do_susfs_set_uname(void __user *arg)
+          {
+          	return susfs_set_uname((struct st_susfs_uname __user *)arg);
+          }
+          #endif
+
+          #ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
+          static int do_susfs_enable_log(void __user *arg)
+          {
+          	int enabled = 0;
+          	if (!arg)
+          		return -EINVAL;
+          	if (copy_from_user(&enabled, arg, sizeof(enabled)))
+          		return -EFAULT;
+          	susfs_set_log(enabled != 0);
+          	return 0;
+          }
+          #endif
+          #endif /* CONFIG_KSU_SUSFS */
+          '''
+              marker = "// IOCTL handlers mapping table"
+              if marker in dtxt:
+                  dtxt = dtxt.replace(marker, handler + "\n" + marker, 1)
+              else:
+                  table = "static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[]"
+                  if table not in dtxt:
+                      raise SystemExit("ERROR: mapping table anchor not found in supercall/dispatch.c")
+                  dtxt = dtxt.replace(table, handler + "\n" + table, 1)
+              print(f"[PATCH] {dispatch}: inserted SUSFS command handlers")
+
+          if "SUSFS_ADD_SUS_PATH" not in dtxt:
+              mappings = r'''
+          #ifdef CONFIG_KSU_SUSFS
+          #ifdef CONFIG_KSU_SUSFS_SUS_PATH
+          	{ .cmd = CMD_SUSFS_ADD_SUS_PATH, .name = "SUSFS_ADD_SUS_PATH", .handler = do_susfs_add_sus_path, .perm_check = manager_or_root },
+          	{ .cmd = CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY, .name = "SUSFS_ADD_SUS_KSTAT_STATICALLY", .handler = do_susfs_add_sus_kstat, .perm_check = manager_or_root },
+          #endif
+          #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+          	{ .cmd = CMD_SUSFS_ADD_SUS_MOUNT, .name = "SUSFS_ADD_SUS_MOUNT", .handler = do_susfs_add_sus_mount, .perm_check = manager_or_root },
+          #endif
+          #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+          	{ .cmd = CMD_SUSFS_ADD_SUS_KSTAT, .name = "SUSFS_ADD_SUS_KSTAT", .handler = do_susfs_add_sus_kstat, .perm_check = manager_or_root },
+          	{ .cmd = CMD_SUSFS_UPDATE_SUS_KSTAT, .name = "SUSFS_UPDATE_SUS_KSTAT", .handler = do_susfs_add_sus_kstat, .perm_check = manager_or_root },
+          #endif
+          #ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+          	{ .cmd = CMD_SUSFS_ADD_TRY_UMOUNT, .name = "SUSFS_ADD_TRY_UMOUNT", .handler = do_susfs_add_try_umount, .perm_check = manager_or_root },
+          #endif
+          #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+          	{ .cmd = CMD_SUSFS_SET_UNAME, .name = "SUSFS_SET_UNAME", .handler = do_susfs_set_uname, .perm_check = manager_or_root },
+          #endif
+          #ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
+          	{ .cmd = CMD_SUSFS_ENABLE_LOG, .name = "SUSFS_ENABLE_LOG", .handler = do_susfs_enable_log, .perm_check = manager_or_root },
+          #endif
+          #endif
+          '''
+              sentinel_re = re.compile(r'^(?P<indent>[ \t]*)\{\s*\.cmd\s*=\s*0\s*,\s*\.name\s*=\s*NULL\s*,\s*\.handler\s*=\s*NULL\s*,\s*\.perm_check\s*=\s*NULL\s*\}\s*,?\s*(?://[^\n]*)?$', re.MULTILINE)
+              m = sentinel_re.search(dtxt)
+              if m:
+                  dtxt = dtxt[:m.start()] + mappings + "\n" + dtxt[m.start():]
+                  print(f"[PATCH] {dispatch}: inserted SUSFS mappings before sentinel")
+              else:
+                  close_re = re.compile(r'^(?P<indent>[ \t]*)\};\s*//\s*clang-format on', re.MULTILINE)
+                  m = close_re.search(dtxt)
+                  if not m:
+                      raise SystemExit("ERROR: neither sentinel nor mapping table close found in supercall/dispatch.c")
+                  dtxt = dtxt[:m.start()] + mappings + "\n" + dtxt[m.start():]
+                  print(f"[PATCH] {dispatch}: sentinel missing, inserted SUSFS mappings before table close")
+          else:
+              print(f"[OK] {dispatch}: SUSFS mappings already present")
+
+          write(dispatch, dtxt)
+          print(f"[PATCH] {dispatch}: added robust SUSFS command bridge")
+
+          kumount = kdir / "feature" / "kernel_umount.c"
+          utxt = read(kumount)
+          if "KSU_NEXT_SUSFS_BRIDGE_L59_INCLUDE" not in utxt:
+              lines = utxt.splitlines(True)
+              pos = 0
+              for i, line in enumerate(lines[:100]):
+                  if line.lstrip().startswith("#include"):
+                      pos = i + 1
+              lines.insert(pos, "#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_BRIDGE_L59_INCLUDE */\n#include <linux/susfs.h>\n#endif\n")
+              utxt = "".join(lines)
+          if "KSU_NEXT_SUSFS_BRIDGE_L59_TRY_UMOUNT_CALL" not in utxt:
+              marker = "pr_info(\"handle umount for uid: %d, pid: %d\\n\", new_uid, current->pid);"
+              call = "\n#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT\n\t/* KSU_NEXT_SUSFS_BRIDGE_L59_TRY_UMOUNT_CALL */\n\tsusfs_try_umount(new_uid);\n#endif"
+              if marker in utxt:
+                  utxt = utxt.replace(marker, marker + call, 1)
+              else:
+                  print("[WARN] kernel_umount.c: umount marker not found; skipping susfs_try_umount call")
+          write(kumount, utxt)
+          print(f"[PATCH] {kumount}: added optional susfs_try_umount call")
+
+          rules = kdir / "selinux" / "rules.c"
+          rtxt = read(rules)
+          # KSU_NEXT_SUSFS_BRIDGE_L59_SEPOLICY_SAFE_SKIP
+          # Do not inject a standalone ksu_allow() line into rules.c.
+          # On this KernelSU-Next legacy layout, inserting near rcu_read_unlock()
+          # can land outside apply_kernelsu_rules_fn() and causes:
+          #   error: expected identifier / conflicting types for ksu_allow
+          # SuSFS can build without this optional zygote labeledfs allow rule.
+          broken = (
+              "\n#ifdef CONFIG_KSU_SUSFS\n"
+              "\t/* KSU_NEXT_SUSFS_BRIDGE_L59_SEPOLICY */\n"
+              "\tksu_allow(db, \"zygote\", \"labeledfs\", \"filesystem\", \"unmount\");\n"
+              "#endif\n"
+          )
+          if broken in rtxt:
+              rtxt = rtxt.replace(broken, "\n")
+              write(rules, rtxt)
+              print(f"[FIX] {rules}: removed unsafe standalone zygote labeledfs allow block")
+          else:
+              print(f"[SKIP] {rules}: skipped optional zygote labeledfs allow for compile-safe L59")
+
+          print("===== BRIDGE MARKERS =====")
+          for f in [kconfig, kbuild, init, dispatch, kumount, rules]:
+              t = read(f)
+              print(f"{f}: KSU_NEXT_SUSFS_BRIDGE_L59={t.count('KSU_NEXT_SUSFS_BRIDGE_L59')}, config KSU_SUSFS={t.count('config KSU_SUSFS')}, CONFIG_KSU_SUSFS={t.count('CONFIG_KSU_SUSFS')}")
+          PY
+
+          echo "===== VERIFY SUSFS SOURCE INTEGRATION ====="
+          {
+            echo "SUSFS_BRANCH=$SUSFS_BRANCH"
+            echo "SUSFS_REPO=$SUSFS_REPO"
+            echo "KSU_ROOT=$KSU_ROOT"
+            echo "KERNEL_PATCH=$KERNEL_PATCH"
+            echo ""
+            echo "--- SuSFS files ---"
+            ls -lah fs/susfs.c include/linux/susfs.h include/linux/sus_su.h fs/sus_su.c 2>/dev/null || true
+            echo ""
+            echo "--- KernelSU Next SuSFS bridge markers ---"
+            grep -RIn "KSU_NEXT_SUSFS_BRIDGE_L59\|CONFIG_KSU_SUSFS\|config KSU_SUSFS\|CMD_SUSFS\|susfs" "$KSU_ROOT/kernel" drivers/kernelsu fs include/linux 2>/dev/null | head -500 || true
+            echo ""
+            echo "--- KernelSU Kconfig SuSFS lines ---"
+            grep -n "KSU_SUSFS" "$KSU_ROOT/kernel/Kconfig" || true
+          } | tee SuSFS-build-info.txt
+
+          REQUIRED=(
+            "fs/susfs.c"
+            "include/linux/susfs.h"
+          )
+
+          for FILE in "${REQUIRED[@]}"; do
+            if [ ! -s "$FILE" ]; then
+              echo "ERROR: required SuSFS file missing or empty: $FILE"
+              exit 1
+            fi
+          done
+
+          if [ -f include/linux/susfs_def.h ]; then
+            echo "[OK] optional include/linux/susfs_def.h exists"
+          else
+            echo "[OK] optional include/linux/susfs_def.h not present in this SuSFS 4.9 patchset; continue"
+          fi
+
+          if ! grep -Eq "^[[:space:]]*config[[:space:]]+KSU_SUSFS$|CONFIG_KSU_SUSFS" "$KSU_ROOT/kernel/Kconfig"; then
+            echo "ERROR: KernelSU-Next Kconfig does not contain config KSU_SUSFS"
+            grep -n "KSU_SUSFS" "$KSU_ROOT/kernel/Kconfig" || true
+            exit 1
+          fi
+
+          if ! grep -q "susfs.o" fs/Makefile; then
+            echo "ERROR: fs/Makefile does not build susfs.o"
+            exit 1
+          fi
+
+          if ! grep -q "susfs_init" "$KSU_ROOT/kernel/core/init.c"; then
+            echo "ERROR: susfs_init bridge missing from KernelSU-Next init"
+            exit 1
+          fi
+          if ! grep -q "extern void susfs_init(void);" "$KSU_ROOT/kernel/core/init.c"; then
+            echo "ERROR: susfs_init extern prototype missing from KernelSU-Next init"
+            exit 1
+          fi
+
+          if ! grep -q "CMD_SUSFS_ADD_SUS_PATH" "$KSU_ROOT/kernel/supercall/dispatch.c"; then
+            echo "ERROR: SUSFS command bridge missing from KernelSU-Next dispatch"
+            exit 1
+          fi
+
+          echo "SuSFS bridge level 15 source integration passed."
+
+
+      - name: Patch KernelSU ksud rc no-exec L59
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          echo "===== PATCH KSUD RC NO-EXEC L59 ====="
+          echo "Purpose: keep v33 root/SuSFS stable, but remove only init.rc exec lines that call ksud."
+          echo "This does not replace KSUD_PATH globally, so su/manager path stays intact."
+
+          if [ -z "${KSU_ROOT:-}" ]; then
+            for CANDIDATE in KernelSU-Next KernelSU; do
+              if [ -d "$CANDIDATE/kernel" ]; then
+                KSU_ROOT="$CANDIDATE"
+                break
+              fi
+            done
+          fi
+
+          if [ -z "${KSU_ROOT:-}" ] || [ ! -d "$KSU_ROOT/kernel" ]; then
+            echo "ERROR: KSU_ROOT not found" | tee ksud-rcnoexec-l59.log
+            find . -maxdepth 4 -type d | sort | sed -n '1,180p' | tee -a ksud-rcnoexec-l59.log
+            exit 1
+          fi
+
+          echo "KSU_ROOT=$KSU_ROOT" | tee ksud-rcnoexec-l59.log
+          export KSU_ROOT
+
+          python3 - <<'PY' 2>&1 | tee -a ksud-rcnoexec-l59.log
+          from pathlib import Path
+          import os
+          import re
+
+          ksu_root = Path(os.environ.get("KSU_ROOT", "KernelSU-Next"))
+          candidates = [
+              ksu_root / "kernel" / "runtime" / "ksud_integration.c",
+              Path("drivers/kernelsu/runtime/ksud_integration.c"),
+          ]
+          src = next((p for p in candidates if p.exists()), None)
+          if src is None:
+              raise SystemExit("ERROR: ksud_integration.c not found")
+
+          text = src.read_text(errors="ignore")
+          marker = "KSU_NEXT_KSUD_RCNOEXEC_L59"
+          phases = ("post-fs-data", "services", "boot-completed")
+
+          # Remove only Android init RC string lines that execute ksud during boot phases.
+          # Keep KSUD_PATH and normal KernelSU userspace/su integration untouched.
+          changed_lines = []
+          out = []
+          for idx, line in enumerate(text.splitlines(True), start=1):
+              s = line.strip()
+              phase = next((p for p in phases if p in line), None)
+              is_c_string = s.startswith('"') or s.startswith('R"')
+              is_exec_line = ("exec" in line and phase and ("KSUD_PATH" in line or "/data/adb/ksud" in line or "ksud" in line))
+              if marker not in text and is_c_string and is_exec_line:
+                  indent = line[:len(line) - len(line.lstrip())]
+                  newline = "\n" if line.endswith("\n") else ""
+                  out.append(f'{indent}"    # {marker}: disabled ksud {phase} init exec to avoid Samsung execve denial\\n"{newline}')
+                  changed_lines.append((idx, phase, line.rstrip()))
+              else:
+                  out.append(line)
+
+          new_text = "".join(out)
+          if changed_lines:
+              src.write_text(new_text)
+              print(f"[PATCH] {src}: disabled {len(changed_lines)} ksud init exec RC line(s)")
+              for idx, phase, old in changed_lines:
+                  print(f"  line {idx} phase={phase}: {old}")
+          else:
+              print(f"[WARN] {src}: no ksud RC exec line matched. Build continues unchanged from stable v33 behavior.")
+
+          print("===== KSUD RC NO-EXEC L59 SOURCE PREVIEW =====")
+          preview = src.read_text(errors="ignore").splitlines()
+          for i, line in enumerate(preview, start=1):
+              if marker in line or "KSUD_PATH" in line or "/data/adb/ksud" in line or "post-fs-data" in line or "boot-completed" in line:
+                  print(f"{src}:{i}: {line}")
+          PY
+
+          echo "===== VERIFY KSUD RC NO-EXEC L59 =====" | tee ksud-rcnoexec-l59-verify.log
+          grep -RIn "KSU_NEXT_KSUD_RCNOEXEC_L59\|KSUD_PATH\|/data/adb/ksud\|post-fs-data\|boot-completed" "$KSU_ROOT/kernel/runtime" drivers/kernelsu/runtime 2>/dev/null | tee -a ksud-rcnoexec-l59-verify.log || true
+
+      - name: Patch KernelSU info logs quiet L59
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          echo "===== PATCH KERNELSU INFO LOGS QUIET L59 =====" | tee ksu-quiet-l59.log
+
+          python3 - <<'PY' 2>&1 | tee -a ksu-quiet-l59.log
+          from pathlib import Path
+
+          candidates = [
+              Path("KernelSU-Next/kernel/include/klog.h"),
+              Path("KernelSU/kernel/include/klog.h"),
+              Path("drivers/kernelsu/include/klog.h"),
+              Path("kernel/kernelsu/include/klog.h"),
+          ]
+
+          marker = "KSU_NEXT_ULTRA_CLEAN_L59"
+          block = "\n".join([
+              "/* KSU_NEXT_ULTRA_CLEAN_L59",
+              " * Keep pr_warn/pr_err visible, but silence KernelSU pr_info noise",
+              " * in non-debug builds. This does not touch SuSFS core or su hooks.",
+              " */",
+              "#ifndef CONFIG_KSU_DEBUG",
+              "#undef pr_info",
+              "#define pr_info(fmt, ...) do { } while (0)",
+              "#endif",
+              "",
+          ])
+
+          patched = 0
+          seen_realpaths = set()
+          for path in candidates:
+              if not path.exists():
+                  continue
+              try:
+                  real = path.resolve()
+              except Exception:
+                  real = path
+              if str(real) in seen_realpaths:
+                  print(f"[SKIP] {path}: duplicate real path {real}")
+                  continue
+              seen_realpaths.add(str(real))
+
+              text = path.read_text(errors="ignore")
+              if marker in text:
+                  print(f"[OK] {path}: marker already present")
+                  patched += 1
+                  continue
+
+              insert_at = -1
+              for needle in ["#include <linux/printk.h>", "#include <linux/kernel.h>"]:
+                  idx = text.find(needle)
+                  if idx >= 0:
+                      insert_at = text.find("\n", idx)
+                      if insert_at >= 0:
+                          insert_at += 1
+                          break
+
+              if insert_at < 0:
+                  insert_at = 0
+
+              text = text[:insert_at] + block + text[insert_at:]
+              path.write_text(text)
+              print(f"[PATCH] {path}: inserted KernelSU pr_info quiet block")
+              patched += 1
+
+          if patched == 0:
+              print("[WARN] no KernelSU klog.h found; build continues unchanged")
+          else:
+              print(f"[DONE] patched_or_seen={patched}")
+          PY
+
+          echo "===== VERIFY KERNELSU QUIET L59 =====" | tee ksu-quiet-l59-verify.log
+          grep -RIn "KSU_NEXT_ULTRA_CLEAN_L59\|#undef pr_info\|#define pr_info" KernelSU-Next KernelSU drivers/kernelsu kernel/kernelsu 2>/dev/null | tee -a ksu-quiet-l59-verify.log || true
+
+
+      - name: Verify KernelSU Next integration v57
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          echo "===== VERIFY KERNELSU NEXT INTEGRATION v57 ====="
+
+          {
+            echo "Device: ${DEVICE}"
+            echo "Model: ${MODEL_NAME}"
+            echo "Android: ${PLATFORM_VERSION}/${ANDROID_MAJOR_VERSION}"
+            echo "Kernel release target: 4.9.220-G960NK-v73-ksunext-susfs-monotonic-vdso-l59"
+            echo ""
+          } > ksu-next-build-info.txt
+
+          if [ -d "KernelSU-Next/.git" ]; then
+            {
+              echo "KernelSU Next directory: KernelSU-Next"
+              echo "KernelSU Next branch: $(git -C KernelSU-Next rev-parse --abbrev-ref HEAD || true)"
+              echo "KernelSU Next commit: $(git -C KernelSU-Next rev-parse HEAD || true)"
+              echo "KernelSU Next short commit: $(git -C KernelSU-Next rev-parse --short HEAD || true)"
+              echo "KernelSU Next latest commit:"
+              git -C KernelSU-Next log -1 --oneline || true
+            } >> ksu-next-build-info.txt
+          elif [ -d "drivers/kernelsu/.git" ]; then
+            {
+              echo "KernelSU Next directory: drivers/kernelsu"
+              echo "KernelSU Next branch: $(git -C drivers/kernelsu rev-parse --abbrev-ref HEAD || true)"
+              echo "KernelSU Next commit: $(git -C drivers/kernelsu rev-parse HEAD || true)"
+              echo "KernelSU Next short commit: $(git -C drivers/kernelsu rev-parse --short HEAD || true)"
+              echo "KernelSU Next latest commit:"
+              git -C drivers/kernelsu log -1 --oneline || true
+            } >> ksu-next-build-info.txt
+          else
+            echo "KernelSU Next git directory not found; setup script may have used a symlink or copied tree." >> ksu-next-build-info.txt
+          fi
+
+          echo ""
+          echo "===== REQUIRED SOURCE MARKERS =====" | tee -a ksu-next-build-info.txt
+
+          REQUIRED_MARKERS=(
+            "kernel/reboot.c:ksu_handle_sys_reboot"
+            "fs/namespace.c:int path_umount(struct path *path, int flags)"
+            "fs/exec.c:ksu_handle_execveat"
+            "fs/open.c:ksu_handle_faccessat"
+            "fs/read_write.c:ksu_handle_sys_read"
+            "fs/stat.c:ksu_handle_stat"
+          )
+
+          for ITEM in "${REQUIRED_MARKERS[@]}"; do
+            FILE="${ITEM%%:*}"
+            MARKER="${ITEM#*:}"
+
+            if grep -Fq "$MARKER" "$FILE"; then
+              echo "[OK] $FILE contains $MARKER" | tee -a ksu-next-build-info.txt
+            else
+              echo "[WARN] $FILE missing $MARKER" | tee -a ksu-next-build-info.txt
+            fi
+          done
+
+          echo ""
+          echo "===== KSU MARKERS PREVIEW =====" | tee -a ksu-next-build-info.txt
+          grep -RIn "CONFIG_KSU\|KSU_NEXT_MANUAL_HOOK\|KSU_NEXT_BACKPORT_PATH_UMOUNT\|ksu_handle_sys_reboot\|path_umount" \
+            Kconfig Makefile drivers fs kernel 2>/dev/null > ksu-next-markers-v57.txt || true
+          sed -n '1,260p' ksu-next-markers-v57.txt | tee -a ksu-next-build-info.txt || true
+
+          if ! grep -q "ksu_handle_sys_reboot" kernel/reboot.c; then
+            echo "ERROR: reboot manual hook is missing"
+            exit 1
+          fi
+
+          if ! grep -q "int path_umount(struct path \*path, int flags)" fs/namespace.c; then
+            echo "ERROR: path_umount backport is missing"
+            exit 1
+          fi
+
+          echo "KernelSU Next v57 source verification passed."
+
+
+      - name: Patch missing WireGuard Kconfig safely
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          LOG="wireguard-kconfig-fix-l59.log"
+          : > "$LOG"
+          echo "===== WIREGUARD KCONFIG SAFE FIX L59 =====" | tee -a "$LOG"
+
+          if grep -qE '^[[:space:]]*(source|rsource)[[:space:]]+"net/wireguard/Kconfig"' net/Kconfig 2>/dev/null; then
+            echo "net/Kconfig references net/wireguard/Kconfig" | tee -a "$LOG"
+
+            if [ ! -f net/wireguard/Kconfig ]; then
+              echo "net/wireguard/Kconfig is missing; disabling stale source line before defconfig" | tee -a "$LOG"
+              cp -av net/Kconfig net/Kconfig.before-wireguard-l59 2>&1 | tee -a "$LOG"
+              sed -i -E 's@^([[:space:]]*)(source|rsource)([[:space:]]+)"net/wireguard/Kconfig".*@\1# L59 disabled stale missing WireGuard Kconfig source@' net/Kconfig
+            else
+              echo "net/wireguard/Kconfig exists; keeping source line" | tee -a "$LOG"
+            fi
+          else
+            echo "No stale net/wireguard/Kconfig source line found" | tee -a "$LOG"
+          fi
+
+          # Guard against leftover CONFIG_WIREGUARD forcing a missing menu.
+          for CFG in arch/arm64/configs/*.config arch/arm64/configs/*_defconfig arch/arm64/configs/*defconfig; do
+            [ -f "$CFG" ] || continue
+            if grep -qE '^CONFIG_WIREGUARD=' "$CFG"; then
+              echo "Disabling CONFIG_WIREGUARD in $CFG" | tee -a "$LOG"
+              sed -i 's/^CONFIG_WIREGUARD=.*/# CONFIG_WIREGUARD is not set/' "$CFG"
+            fi
+          done
+
+          echo "===== net/Kconfig wireguard lines after fix =====" | tee -a "$LOG"
+          grep -nEi 'wireguard' net/Kconfig 2>/dev/null | tee -a "$LOG" || true
+
+          echo "WireGuard Kconfig safe fix L59 completed" | tee -a "$LOG"
+
+      - name: Patch missing SipHash weak compat object safely
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          LOG="siphash-linkfix-l59.log"
+          : > "$LOG"
+          echo "===== SIPHASH WEAK COMPAT LINK FIX L59 =====" | tee -a "$LOG"
+
+          echo "===== siphash references before fix =====" | tee -a "$LOG"
+          grep -RIn "siphash_4u64\|siphash_3u32\|__siphash_aligned\|siphash.o\|CONFIG_SIPHASH" \
+            include lib net kernel 2>/dev/null | head -260 | tee -a "$LOG" || true
+
+          mkdir -p kernel
+          cat > kernel/siphash_compat_l59.c <<'EOF_SIPHASH_COMPAT'
+          /*
+           * KSU_NEXT_SIPHASH_COMPAT_L59
+           * Legacy Exynos9810 tree: net/ uses siphash symbols while the object
+           * is not reliably linked into vmlinux. These weak definitions are
+           * linked from kernel/built-in.o. If the tree later links a real strong
+           * implementation, the strong one will win.
+           */
+          #include <linux/types.h>
+          #include <linux/kernel.h>
+          #include <linux/string.h>
+          #include <linux/siphash.h>
+
+          #ifndef __weak
+          #define __weak __attribute__((weak))
+          #endif
+
+          #ifndef rol64
+          #define rol64(x, n) (((x) << (n)) | ((x) >> (64 - (n))))
+          #endif
+
+          #define KSU_SIPHASH_ROUND do { \
+              v0 += v1; v1 = rol64(v1, 13); v1 ^= v0; v0 = rol64(v0, 32); \
+              v2 += v3; v3 = rol64(v3, 16); v3 ^= v2; \
+              v0 += v3; v3 = rol64(v3, 21); v3 ^= v0; \
+              v2 += v1; v1 = rol64(v1, 17); v1 ^= v2; v2 = rol64(v2, 32); \
+          } while (0)
+
+          static inline u64 ksu_get_unaligned_le64_l59(const void *p)
+          {
+              const u8 *b = p;
+              return ((u64)b[0]) | ((u64)b[1] << 8) | ((u64)b[2] << 16) | ((u64)b[3] << 24) |
+                     ((u64)b[4] << 32) | ((u64)b[5] << 40) | ((u64)b[6] << 48) | ((u64)b[7] << 56);
+          }
+
+          __weak u64 __siphash_aligned(const void *data, size_t len, const siphash_key_t *key)
+          {
+              const u8 *in = data;
+              const u64 *k = (const u64 *)key;
+              u64 k0 = k[0];
+              u64 k1 = k[1];
+              u64 v0 = 0x736f6d6570736575ULL ^ k0;
+              u64 v1 = 0x646f72616e646f6dULL ^ k1;
+              u64 v2 = 0x6c7967656e657261ULL ^ k0;
+              u64 v3 = 0x7465646279746573ULL ^ k1;
+              u64 b = ((u64)len) << 56;
+              u64 m;
+
+              while (len >= 8) {
+                  m = ksu_get_unaligned_le64_l59(in);
+                  v3 ^= m;
+                  KSU_SIPHASH_ROUND;
+                  KSU_SIPHASH_ROUND;
+                  v0 ^= m;
+                  in += 8;
+                  len -= 8;
+              }
+
+              switch (len) {
+              case 7: b |= ((u64)in[6]) << 48;
+              case 6: b |= ((u64)in[5]) << 40;
+              case 5: b |= ((u64)in[4]) << 32;
+              case 4: b |= ((u64)in[3]) << 24;
+              case 3: b |= ((u64)in[2]) << 16;
+              case 2: b |= ((u64)in[1]) << 8;
+              case 1: b |= ((u64)in[0]);
+              default: break;
+              }
+
+              v3 ^= b;
+              KSU_SIPHASH_ROUND;
+              KSU_SIPHASH_ROUND;
+              v0 ^= b;
+              v2 ^= 0xff;
+              KSU_SIPHASH_ROUND;
+              KSU_SIPHASH_ROUND;
+              KSU_SIPHASH_ROUND;
+              KSU_SIPHASH_ROUND;
+              return v0 ^ v1 ^ v2 ^ v3;
+          }
+
+          __weak u64 siphash_3u32(const u32 a, const u32 b, const u32 c, const siphash_key_t *key)
+          {
+              u32 data[3] = { a, b, c };
+              return __siphash_aligned(data, sizeof(data), key);
+          }
+
+          __weak u64 siphash_4u64(const u64 a, const u64 b, const u64 c, const u64 d, const siphash_key_t *key)
+          {
+              u64 data[4] = { a, b, c, d };
+              return __siphash_aligned(data, sizeof(data), key);
+          }
+          EOF_SIPHASH_COMPAT
+
+          if grep -q "KSU_NEXT_SIPHASH_COMPAT_L59" kernel/Makefile; then
+            echo "kernel/Makefile already has KSU_NEXT_SIPHASH_COMPAT_L59" | tee -a "$LOG"
+          else
+            {
+              echo ""
+              echo "# KSU_NEXT_SIPHASH_COMPAT_L59: provide weak siphash symbols for net/built-in.o link."
+              echo "obj-y += siphash_compat_l59.o"
+            } >> kernel/Makefile
+            echo "[PATCH] kernel/Makefile: obj-y += siphash_compat_l59.o" | tee -a "$LOG"
+          fi
+
+          # Keep previous safer hints too, but do not rely on them. This helps if the
+          # tree has an official CONFIG_SIPHASH path while the compat object remains weak.
+          if grep -Rqs "config SIPHASH" lib Kconfig crypto net; then
+            echo "CONFIG_SIPHASH=y" >> arch/arm64/configs/$TEMP_DEFCONFIG
+            echo "[PATCH] TEMP_DEFCONFIG: appended CONFIG_SIPHASH=y" | tee -a "$LOG"
+          else
+            echo "No CONFIG_SIPHASH Kconfig entry found; weak kernel object is the active fix" | tee -a "$LOG"
+          fi
+
+          echo "===== kernel/Makefile siphash lines after fix =====" | tee -a "$LOG"
+          grep -n "siphash_compat_l59\|KSU_NEXT_SIPHASH_COMPAT_L59" kernel/Makefile | tee -a "$LOG" || true
+          echo "===== compat source preview =====" | tee -a "$LOG"
+          ls -lah kernel/siphash_compat_l59.c | tee -a "$LOG"
+          grep -n "__siphash_aligned\|siphash_3u32\|siphash_4u64\|__weak" kernel/siphash_compat_l59.c | tee -a "$LOG" || true
+
+          echo "SipHash weak compat link fix L59 completed" | tee -a "$LOG"
+
+      - name: Apply clean S9 ghost uptime proc surface L59
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -euo pipefail
+          echo "===== APPLY CLEAN S9 GHOST UPTIME L59 ====="
+          mkdir -p scripts include/linux kernel
+          cat > scripts/ci_apply_s9_ghost_uptime_l59.py <<'PY'
+          from pathlib import Path
+          import re
+
+          ROOT = Path('.')
+          TIMEKEEPING = ROOT / 'kernel/time/timekeeping.c'
+          STAT = ROOT / 'fs/stat.c'
+          PROC_UPTIME = ROOT / 'fs/proc/uptime.c'
+          PROC_STAT = ROOT / 'fs/proc/stat.c'
+          SYS = ROOT / 'kernel/sys.c'
+          HEADER = ROOT / 'include/linux/ghost_uptime.h'
+          MODULE = ROOT / 'kernel/ghost_uptime.c'
+          KMAKE = ROOT / 'kernel/Makefile'
+          REPORT = ROOT / 's9-ghost-uptime-l59-report.txt'
+
+          def die(msg):
+              raise SystemExit('ERROR: ' + msg)
+
+          def read(path):
+              if not path.exists():
+                  die(f'missing {path}')
+              return path.read_text(errors='ignore')
+
+          def write(path, data):
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(data)
+
+          def add_include_once(data, include_line):
+              if include_line in data:
+                  return data
+              matches = list(re.finditer(r'#include\s+<[^>]+>', data))
+              if not matches:
+                  die(f'no include anchor for {include_line}')
+              m = matches[-1]
+              return data[:m.end()] + '\n' + include_line + data[m.end():]
+
+          report = []
+
+          write(HEADER, '''#ifndef _LINUX_GHOST_UPTIME_H
+          #define _LINUX_GHOST_UPTIME_H
+
+          #include <linux/types.h>
+          #include <linux/time64.h>
+
+          struct inode;
+          struct kstat;
+          struct timespec;
+          struct timespec64;
+          struct sysinfo;
+
+          extern u64 ghost_uptime_offset_ns;
+          void ghost_uptime_apply_boot_time(struct timespec64 *boot_time, time64_t wall_sec);
+          void ghost_uptime_apply_stat(struct inode *inode, struct kstat *stat);
+          u64 ghost_uptime_get_offset_ns(void);
+          void ghost_uptime_apply_proc_uptime_ts(struct timespec *uptime);
+          void ghost_uptime_apply_proc_uptime_pair(struct timespec *uptime, struct timespec *idle);
+          void ghost_uptime_apply_proc_btime64(struct timespec64 *boottime);
+          void ghost_uptime_apply_sysinfo(struct sysinfo *info);
+
+          #endif /* _LINUX_GHOST_UPTIME_H */
+          ''')
+
+          write(MODULE, '''// SPDX-License-Identifier: GPL-2.0
+          /*
+           * S9/Exynos9810 clean ghost uptime helper L59.
+           *
+           * Design:
+           * - one module owns the offset
+           * - timekeeping_get_delta(), raw clock, sched_clock and fast clocks stay untouched
+           * - timekeeping_init() only shifts the boot-time source once
+           * - generic_fillattr() reuses the same offset for selected virtual fs timestamps
+           */
+
+          #include <linux/ghost_uptime.h>
+          #include <linux/export.h>
+          #include <linux/fs.h>
+          #include <linux/jiffies.h>
+          #include <linux/kernel.h>
+          #include <linux/math64.h>
+          #include <linux/printk.h>
+          #include <linux/stat.h>
+          #include <linux/time.h>
+          #include <linux/time64.h>
+
+          #define GHOST_UPTIME_MIN_DAYS 15ULL
+          #define GHOST_UPTIME_MAX_DAYS 25ULL
+          #define GHOST_UPTIME_DAY_SECS 86400ULL
+          #define GHOST_UPTIME_MIN_SECS (GHOST_UPTIME_MIN_DAYS * GHOST_UPTIME_DAY_SECS)
+          #define GHOST_UPTIME_RANGE_SECS ((GHOST_UPTIME_MAX_DAYS - GHOST_UPTIME_MIN_DAYS + 1ULL) * GHOST_UPTIME_DAY_SECS)
+
+          u64 ghost_uptime_offset_ns __read_mostly;
+          EXPORT_SYMBOL_GPL(ghost_uptime_offset_ns);
+
+          static bool ghost_uptime_ready __read_mostly;
+
+          static u64 ghost_uptime_mix64(u64 x)
+          {
+              x ^= x >> 33;
+              x *= 0xff51afd7ed558ccdULL;
+              x ^= x >> 33;
+              x *= 0xc4ceb9fe1a85ec53ULL;
+              x ^= x >> 33;
+              return x;
+          }
+
+          static u64 ghost_uptime_read_counter(void)
+          {
+              u64 counter = 0;
+          #if defined(CONFIG_ARM64)
+              asm volatile("mrs %0, cntpct_el0" : "=r" (counter));
+          #endif
+              return counter;
+          }
+
+          static u64 ghost_uptime_make_offset_secs(time64_t wall_sec)
+          {
+              u64 seed = ghost_uptime_read_counter();
+              u64 secs;
+
+              seed ^= (u64)jiffies << 32;
+              seed ^= (u64)wall_sec;
+              seed ^= (u64)(unsigned long)&seed;
+              seed = ghost_uptime_mix64(seed);
+
+              secs = GHOST_UPTIME_MIN_SECS + (seed % GHOST_UPTIME_RANGE_SECS);
+              if (wall_sec > 0)
+                  secs += (u64)(wall_sec % 1800);
+              return secs;
+          }
+
+          void ghost_uptime_apply_boot_time(struct timespec64 *boot_time, time64_t wall_sec)
+          {
+              u64 secs;
+
+              if (!boot_time || ghost_uptime_ready)
+                  return;
+
+              secs = ghost_uptime_make_offset_secs(wall_sec);
+
+              if (boot_time->tv_sec > (time64_t)secs)
+                  boot_time->tv_sec -= (time64_t)secs;
+              else if (wall_sec > (time64_t)secs)
+                  boot_time->tv_sec = wall_sec - (time64_t)secs;
+              else
+                  boot_time->tv_sec = 0;
+
+              ghost_uptime_offset_ns = secs * NSEC_PER_SEC;
+              ghost_uptime_ready = true;
+
+          #ifndef CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+              pr_info("ghost_uptime_l59: offset_secs=%llu offset_days=%llu\n",
+                      secs, div64_u64(secs, GHOST_UPTIME_DAY_SECS));
+          #endif
+          }
+          EXPORT_SYMBOL_GPL(ghost_uptime_apply_boot_time);
+
+          u64 ghost_uptime_get_offset_ns(void)
+          {
+              return ghost_uptime_offset_ns;
+          }
+          EXPORT_SYMBOL_GPL(ghost_uptime_get_offset_ns);
+
+          static u64 ghost_uptime_offset_secs(void)
+          {
+              if (!ghost_uptime_offset_ns)
+                  return 0;
+              return div64_u64(ghost_uptime_offset_ns, NSEC_PER_SEC);
+          }
+
+          void ghost_uptime_apply_proc_uptime_pair(struct timespec *uptime, struct timespec *idle)
+          {
+              u64 off = ghost_uptime_offset_secs();
+
+              if (!off)
+                  return;
+              if (uptime)
+                  uptime->tv_sec += (time_t)off;
+              if (idle)
+                  idle->tv_sec += (time_t)off;
+          }
+          EXPORT_SYMBOL_GPL(ghost_uptime_apply_proc_uptime_pair);
+
+          void ghost_uptime_apply_proc_uptime_ts(struct timespec *uptime)
+          {
+              ghost_uptime_apply_proc_uptime_pair(uptime, NULL);
+          }
+          EXPORT_SYMBOL_GPL(ghost_uptime_apply_proc_uptime_ts);
+
+          void ghost_uptime_apply_sysinfo(struct sysinfo *info)
+          {
+              u64 off = ghost_uptime_offset_secs();
+
+              if (!info || !off)
+                  return;
+              info->uptime += (long)off;
+          }
+          EXPORT_SYMBOL_GPL(ghost_uptime_apply_sysinfo);
+
+          void ghost_uptime_apply_proc_btime64(struct timespec64 *boottime)
+          {
+              u64 off;
+
+              if (!boottime || !ghost_uptime_offset_ns)
+                  return;
+              off = ghost_uptime_offset_secs();
+              if (boottime->tv_sec > (time64_t)off)
+                  boottime->tv_sec -= (time64_t)off;
+              else
+                  boottime->tv_sec = 0;
+          }
+          EXPORT_SYMBOL_GPL(ghost_uptime_apply_proc_btime64);
+
+          static bool ghost_uptime_stat_magic_allowed(unsigned long magic)
+          {
+              switch (magic) {
+              case 0x9fa0:
+              case 0x62656572:
+              case 0x1021994:
+              case 0x64626720:
+              case 0x73636673:
+              case 0x27e0eb:
+              case 0x6e736673:
+              case 0x1373:
+                  return true;
+              default:
+                  return false;
+              }
+          }
+
+          static void ghost_uptime_sub_time64(struct timespec64 *ts, u64 off)
+          {
+              if (!ts)
+                  return;
+              if (ts->tv_sec > 0 && (u64)ts->tv_sec > off)
+                  ts->tv_sec -= off;
+          }
+
+          void ghost_uptime_apply_stat(struct inode *inode, struct kstat *stat)
+          {
+              u64 off;
+
+              if (!inode || !inode->i_sb || !stat || !ghost_uptime_offset_ns)
+                  return;
+              if (!ghost_uptime_stat_magic_allowed(inode->i_sb->s_magic))
+                  return;
+
+              off = div64_u64(ghost_uptime_offset_ns, NSEC_PER_SEC);
+              ghost_uptime_sub_time64(&stat->atime, off);
+              ghost_uptime_sub_time64(&stat->mtime, off);
+              ghost_uptime_sub_time64(&stat->ctime, off);
+          }
+          EXPORT_SYMBOL_GPL(ghost_uptime_apply_stat);
+          ''')
+          report.append('wrote include/linux/ghost_uptime.h')
+          report.append('wrote kernel/ghost_uptime.c')
+
+          km = read(KMAKE)
+          # S9 kernel/Makefile defines obj-y after the file header, so adding
+          # obj-y at the very top can be overwritten later.  Force a bottom
+          # append marker to guarantee ghost_uptime.o is linked into vmlinux.
+          km = re.sub(r'(?m)^obj-y\s*\+=\s*ghost_uptime\.o\s*\n', '', km)
+          marker = '# S9_GHOST_UPTIME_L59_LINK_OBJECT\nobj-y += ghost_uptime.o\n'
+          if 'S9_GHOST_UPTIME_L59_LINK_OBJECT' not in km:
+              km = km.rstrip() + '\n\n' + marker
+              write(KMAKE, km)
+              report.append('kernel/Makefile appended obj-y += ghost_uptime.o at bottom')
+          else:
+              report.append('kernel/Makefile already contains bottom ghost_uptime.o marker')
+
+          tk = read(TIMEKEEPING)
+          tk_orig = tk
+          tk = add_include_once(tk, '#include <linux/ghost_uptime.h>')
+          tk = re.sub(r'\n?\s*static\s+inline\s+u64\s+get_fake_boottime(?:_ns)?\s*\(\s*void\s*\)\s*\{.*?\}\s*', '\n', tk, flags=re.S)
+          tk = re.sub(r'return\s+delta\s*\+\s*get_fake_boottime(?:_ns)?\s*\(\s*\)\s*;', 'return delta;', tk)
+          tk = re.sub(r'return\s+tk_clock_read\s*\(\s*tkr\s*\)\s*-\s*tkr->cycle_last\s*\+\s*get_fake_boottime(?:_ns)?\s*\(\s*\)\s*;', 'return tk_clock_read(tkr) - tkr->cycle_last;', tk)
+          tk = re.sub(r'\s*\+\s*get_fake_boottime(?:_ns)?\s*\(\s*\)', '', tk)
+          tk = re.sub(r'\bu64\s+arch_sys_boot_offset\s*(?:=\s*0)?\s*;\s*(?:EXPORT_SYMBOL_GPL\s*\(\s*arch_sys_boot_offset\s*\)\s*;)?', '', tk)
+
+          call = '\n\tghost_uptime_apply_boot_time(&boot, now.tv_sec);'
+          if 'ghost_uptime_apply_boot_time(&boot, now.tv_sec)' not in tk:
+              pattern = r'(if\s*\(\s*boot\.tv_sec\s*==\s*0\s*&&\s*boot\.tv_nsec\s*==\s*0\s*\)\s*boot\s*=\s*tk_xtime\s*\(\s*tk\s*\)\s*;)'
+              tk, n = re.subn(pattern, r'\1' + call, tk, count=1)
+              if n != 1:
+                  die('cannot find S9 boot=tk_xtime anchor in timekeeping_init()')
+          if 'get_fake_boottime' in tk:
+              die('old get_fake_boottime remains in timekeeping.c')
+          if re.search(r'return\s+delta\s*\+', tk):
+              die('suspicious return delta + remains in timekeeping.c')
+          if tk.count('ghost_uptime_apply_boot_time(&boot, now.tv_sec)') != 1:
+              die('ghost_uptime_apply_boot_time call count is not exactly 1')
+          write(TIMEKEEPING, tk)
+          report.append(f'timekeeping.c changed={tk != tk_orig}')
+
+          st = read(STAT)
+          st_orig = st
+          st = add_include_once(st, '#include <linux/ghost_uptime.h>')
+          st = re.sub(r'\n?\s*extern\s+u64\s+arch_sys_boot_offset\s*;\s*', '\n', st)
+          if 'ghost_uptime_apply_stat(inode, stat);' not in st:
+              st, n = re.subn(r'(stat->blocks\s*=\s*inode->i_blocks\s*;)', r'\1\n\tghost_uptime_apply_stat(inode, stat);', st, count=1)
+              if n != 1:
+                  die('cannot find stat->blocks anchor in fs/stat.c')
+          if st.count('ghost_uptime_apply_stat(inode, stat);') != 1:
+              die('ghost_uptime_apply_stat call count is not exactly 1')
+          if 'arch_sys_boot_offset' in st:
+              die('old arch_sys_boot_offset reference remains in fs/stat.c')
+          write(STAT, st)
+          report.append(f'stat.c changed={st != st_orig}')
+
+
+          # /proc/uptime and /proc/stat are Android-visible uptime surfaces.
+          # L59 also adjusts /proc/uptime idle field and sysinfo(2), which toybox uptime often uses.
+          # Keep real CLOCK_MONOTONIC / RAW untouched; only change exported display values.
+          pu = read(PROC_UPTIME)
+          pu_orig = pu
+          pu = add_include_once(pu, '#include <linux/ghost_uptime.h>')
+          pu = pu.replace('ghost_uptime_apply_proc_uptime_ts(&uptime);', '')
+          if 'ghost_uptime_apply_proc_uptime_pair(&uptime, &idle);' not in pu:
+              pu, n = re.subn(r'(idle\.tv_nsec\s*=\s*(?:\(long\))?rem\s*;)', r'\1\n\tghost_uptime_apply_proc_uptime_pair(&uptime, &idle);', pu, count=1)
+              if n != 1:
+                  die('cannot find idle.tv_nsec = rem anchor in fs/proc/uptime.c')
+          if pu.count('ghost_uptime_apply_proc_uptime_pair(&uptime, &idle);') != 1:
+              die('ghost_uptime_apply_proc_uptime_pair call count is not exactly 1')
+          write(PROC_UPTIME, pu)
+          report.append(f'proc/uptime.c pair-sync changed={pu != pu_orig}')
+
+          sysc = read(SYS)
+          sysc_orig = sysc
+          sysc = add_include_once(sysc, '#include <linux/ghost_uptime.h>')
+          # kernel/sys.c is compiled as old GNU C with -Werror=declaration-after-statement.
+          # Force a file-scope prototype near the include area because the previous
+          # header include can land inside vendor/KSU #ifdef include regions on this tree.
+          sysc = re.sub(r'\n\s*/\* S9_GHOST_UPTIME_SYSINFO_PROTO_L59 \*/\s*\n\s*extern\s+void\s+ghost_uptime_apply_sysinfo\s*\(\s*struct\s+sysinfo\s*\*\s*info\s*\)\s*;\s*', '\n', sysc)
+          sysc = re.sub(r'\n\s*extern\s+void\s+ghost_uptime_apply_sysinfo\s*\(\s*struct\s+sysinfo\s*\*\s*info\s*\)\s*;\s*\n\s*ghost_uptime_apply_sysinfo\s*\(\s*info\s*\)\s*;', '\n\tghost_uptime_apply_sysinfo(info);', sysc)
+          sysc = re.sub(r'\n\s*extern\s+void\s+ghost_uptime_apply_sysinfo\s*\(\s*struct\s+sysinfo\s*\*\s*info\s*\)\s*;', '\n', sysc)
+          proto = '\n/* S9_GHOST_UPTIME_SYSINFO_PROTO_L59 */\nextern void ghost_uptime_apply_sysinfo(struct sysinfo *info);\n'
+          if 'S9_GHOST_UPTIME_SYSINFO_PROTO_L59' not in sysc:
+              anchor = '#include <linux/syscalls.h>'
+              if anchor in sysc:
+                  sysc = sysc.replace(anchor, anchor + proto, 1)
+              else:
+                  m = re.search(r'(?m)^(#include\s+<[^>]+>\s*)', sysc)
+                  if not m:
+                      die('cannot find safe top-level include anchor in kernel/sys.c for sysinfo prototype')
+                  sysc = sysc[:m.end()] + proto + sysc[m.end():]
+          if 'ghost_uptime_apply_sysinfo(info);' not in sysc:
+              sysc, n = re.subn(r'(info->uptime\s*=\s*[^;]+;)', r'\1\n\tghost_uptime_apply_sysinfo(info);', sysc, count=1)
+              if n != 1:
+                  die('cannot find info->uptime assignment anchor in kernel/sys.c')
+          if sysc.count('ghost_uptime_apply_sysinfo(info);') != 1:
+              die('ghost_uptime_apply_sysinfo call count is not exactly 1')
+          if 'S9_GHOST_UPTIME_SYSINFO_PROTO_L59' not in sysc:
+              die('ghost_uptime sysinfo top-level prototype marker missing in kernel/sys.c')
+          if '#include <linux/ghost_uptime.h>' not in sysc:
+              die('ghost_uptime header include missing in kernel/sys.c')
+          write(SYS, sysc)
+          report.append(f'kernel/sys.c sysinfo-sync top-level-prototype changed={sysc != sysc_orig}')
+
+          ps = read(PROC_STAT)
+          ps_orig = ps
+          ps = add_include_once(ps, '#include <linux/ghost_uptime.h>')
+          if 'ghost_uptime_apply_proc_btime64(&boottime);' not in ps:
+              ps, n = re.subn(r'(getboottime64\s*\(\s*&boottime\s*\)\s*;)', r'\1\n\tghost_uptime_apply_proc_btime64(&boottime);', ps, count=1)
+              if n != 1:
+                  die('cannot find getboottime64(&boottime) anchor in fs/proc/stat.c')
+          if ps.count('ghost_uptime_apply_proc_btime64(&boottime);') != 1:
+              die('ghost_uptime_apply_proc_btime64 call count is not exactly 1')
+          write(PROC_STAT, ps)
+          report.append(f'proc/stat.c changed={ps != ps_orig}')
+
+          REPORT.write_text('\n'.join(report) + '\n')
+          print(REPORT.read_text())
+          PY
+          python3 scripts/ci_apply_s9_ghost_uptime_l59.py
+          echo "===== VERIFY S9 GHOST UPTIME L59 ====="
+          grep -RniE "ghost_uptime_apply_boot_time|ghost_uptime_apply_stat|ghost_uptime_apply_proc_uptime_pair|ghost_uptime_apply_sysinfo|ghost_uptime_apply_proc_uptime_ts|ghost_uptime_apply_proc_btime64|ghost_uptime_offset_ns|ghost_uptime_l59|get_fake_boottime|arch_sys_boot_offset|return[[:space:]]+delta[[:space:]]*\\+" \
+            kernel/time/timekeeping.c fs/stat.c fs/proc/uptime.c fs/proc/stat.c kernel/sys.c include/linux/ghost_uptime.h kernel/ghost_uptime.c kernel/Makefile 2>/dev/null || true
+          if grep -RniE "get_fake_boottime|arch_sys_boot_offset|return[[:space:]]+delta[[:space:]]*\\+" kernel/time/timekeeping.c fs/stat.c include/linux/ghost_uptime.h 2>/dev/null; then
+            echo "ERROR: old/dirty uptime pattern still exists"
+            exit 1
+          fi
+          grep -q "ghost_uptime_apply_boot_time(&boot, now.tv_sec)" kernel/time/timekeeping.c
+          grep -q "ghost_uptime_apply_stat(inode, stat);" fs/stat.c
+          grep -q "S9_GHOST_UPTIME_L59_LINK_OBJECT" kernel/Makefile
+          grep -q "ghost_uptime_apply_proc_uptime_pair(&uptime, &idle);" fs/proc/uptime.c
+          grep -q "ghost_uptime_apply_sysinfo(info);" kernel/sys.c
+          grep -q "S9_GHOST_UPTIME_SYSINFO_PROTO_L59" kernel/sys.c
+          grep -q "ghost_uptime_apply_proc_btime64(&boottime);" fs/proc/stat.c
+          cp -f s9-ghost-uptime-l59-report.txt ../s9-ghost-uptime-l59-report.txt
+
+      - name: Patch CLOCK_BOOTTIME user surface L59
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -euo pipefail
+          echo "===== PATCH CLOCK_BOOTTIME USER SURFACE L59 ====="
+          cat > scripts/ci_patch_s9_boottime_surface_l59.py <<'PY'
+          from pathlib import Path
+          import re
+
+          ROOT = Path('.')
+          HEADER = ROOT / 'include/linux/ghost_uptime.h'
+          MODULE = ROOT / 'kernel/ghost_uptime.c'
+          CANDIDATES = [
+              ROOT / 'kernel/time/posix-timers.c',
+              ROOT / 'kernel/time/posix-stubs.c',
+          ]
+          REPORT = ROOT / 's9-boottime-surface-l59-report.txt'
+
+          def die(msg):
+              raise SystemExit('ERROR: ' + msg)
+
+          def read(path):
+              if not path.exists():
+                  die(f'missing {path}')
+              return path.read_text(errors='ignore')
+
+          def write(path, data):
+              path.write_text(data)
+
+          def add_include_once(data, include_line):
+              if include_line in data:
+                  return data
+              matches = list(re.finditer(r'#include\s+<[^>]+>', data))
+              if not matches:
+                  die(f'no include anchor for {include_line}')
+              m = matches[-1]
+              return data[:m.end()] + '\n' + include_line + data[m.end():]
+
+          report = []
+
+          h = read(HEADER)
+          if 'ghost_uptime_apply_boottime_ts(struct timespec *ts)' not in h:
+              h = h.replace('void ghost_uptime_apply_sysinfo(struct sysinfo *info);',
+                  'void ghost_uptime_apply_sysinfo(struct sysinfo *info);\n'
+                  'void ghost_uptime_apply_boottime_ts(struct timespec *ts);\n'
+                  'void ghost_uptime_apply_boottime_ts64(struct timespec64 *ts);')
+              write(HEADER, h)
+              report.append('header added boottime prototypes')
+          else:
+              report.append('header boottime prototypes already present')
+
+          m = read(MODULE)
+          if 'ghost_uptime_apply_boottime_ts(struct timespec *ts)' not in m:
+              block = r'''
+
+          void ghost_uptime_apply_boottime_ts(struct timespec *ts)
+          {
+              u64 off = ghost_uptime_offset_secs();
+
+              if (!ts || !off)
+                  return;
+              ts->tv_sec += (time_t)off;
+          }
+          EXPORT_SYMBOL_GPL(ghost_uptime_apply_boottime_ts);
+
+          void ghost_uptime_apply_boottime_ts64(struct timespec64 *ts)
+          {
+              u64 off = ghost_uptime_offset_secs();
+
+              if (!ts || !off)
+                  return;
+              ts->tv_sec += (time64_t)off;
+          }
+          EXPORT_SYMBOL_GPL(ghost_uptime_apply_boottime_ts64);
+          '''
+              marker = 'void ghost_uptime_apply_proc_btime64(struct timespec64 *boottime)'
+              idx = m.find(marker)
+              if idx < 0:
+                  die('cannot find proc_btime64 anchor in ghost_uptime.c')
+              m = m[:idx] + block + '\n' + m[idx:]
+              write(MODULE, m)
+              report.append('module added boottime apply helpers')
+          else:
+              report.append('module boottime apply helpers already present')
+
+          patched = []
+          for path in CANDIDATES:
+              if not path.exists():
+                  report.append(f'{path}: missing, skipped')
+                  continue
+              txt = read(path)
+              orig = txt
+              if 'posix_get_boottime' not in txt and 'CLOCK_BOOTTIME' not in txt:
+                  report.append(f'{path}: no boottime symbols, skipped')
+                  continue
+              txt = add_include_once(txt, '#include <linux/ghost_uptime.h>')
+
+              def patch_func(match):
+                  body = match.group(0)
+                  if 'ghost_uptime_apply_boottime_ts(' in body or 'ghost_uptime_apply_boottime_ts64(' in body:
+                      return body
+                  sig = body.split('{', 1)[0]
+                  m_ts = re.search(r'struct\s+timespec\s*\*\s*(\w+)', sig)
+                  m_ts64 = re.search(r'struct\s+timespec64\s*\*\s*(\w+)', sig)
+                  if m_ts:
+                      var = m_ts.group(1)
+                      body2, n = re.subn(r'(get_monotonic_boottime\s*\(\s*' + re.escape(var) + r'\s*\)\s*;)',
+                                         r'\1\n\tghost_uptime_apply_boottime_ts(' + var + r');', body, count=1)
+                      if n == 0:
+                          body2, n = re.subn(r'(ktime_get_boottime_ts\s*\(\s*' + re.escape(var) + r'\s*\)\s*;)',
+                                             r'\1\n\tghost_uptime_apply_boottime_ts(' + var + r');', body, count=1)
+                      if n == 0:
+                          body2, n = re.subn(r'(return\s+0\s*;)', r'ghost_uptime_apply_boottime_ts(' + var + r');\n\t\1', body, count=1)
+                      if n:
+                          return body2
+                  if m_ts64:
+                      var = m_ts64.group(1)
+                      body2, n = re.subn(r'(ktime_get_boottime_ts64\s*\(\s*' + re.escape(var) + r'\s*\)\s*;)',
+                                         r'\1\n\tghost_uptime_apply_boottime_ts64(' + var + r');', body, count=1)
+                      if n == 0:
+                          body2, n = re.subn(r'(return\s+0\s*;)', r'ghost_uptime_apply_boottime_ts64(' + var + r');\n\t\1', body, count=1)
+                      if n:
+                          return body2
+                  return body
+
+              func_pat = re.compile(r'static\s+int\s+posix_get_boottime\s*\([^)]*\)\s*\{[^{}]*\}', re.S)
+              txt2, n = func_pat.subn(patch_func, txt, count=1)
+              txt = txt2
+              if n == 0 and 'get_monotonic_boottime(tp);' in txt and 'ghost_uptime_apply_boottime_ts(tp);' not in txt:
+                  txt = txt.replace('get_monotonic_boottime(tp);', 'get_monotonic_boottime(tp);\n\tghost_uptime_apply_boottime_ts(tp);', 1)
+                  n = 1
+
+              if txt != orig:
+                  write(path, txt)
+                  patched.append(str(path))
+                  report.append(f'{path}: patched boottime user surface')
+              else:
+                  report.append(f'{path}: unchanged')
+
+          if not patched:
+              report.append('WARNING: no posix boottime surface patched; v73 will behave like v69 for elapsedRealtime')
+          else:
+              report.append('patched_files=' + ','.join(patched))
+
+          REPORT.write_text('\n'.join(report) + '\n')
+          print(REPORT.read_text())
+          PY
+          python3 scripts/ci_patch_s9_boottime_surface_l59.py
+          echo "===== VERIFY CLOCK_BOOTTIME USER SURFACE L59 ====="
+          cat s9-boottime-surface-l59-report.txt
+          grep -RniE "ghost_uptime_apply_boottime_ts|posix_get_boottime|CLOCK_BOOTTIME|get_monotonic_boottime|ktime_get_boottime" \
+            include/linux/ghost_uptime.h kernel/ghost_uptime.c kernel/time/posix-timers.c kernel/time/posix-stubs.c 2>/dev/null || true
+          cp -f s9-boottime-surface-l59-report.txt ../s9-boottime-surface-l59-report.txt
+
+      - name: Patch CLOCK_BOOTTIME VDSO data surface L59
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -euo pipefail
+          echo "===== PATCH CLOCK_BOOTTIME VDSO DATA SURFACE L59 ====="
+          cat > scripts/ci_patch_s9_boottime_vdso_l59.py <<'PY'
+          from pathlib import Path
+          import re
+
+          ROOT = Path('.')
+          VDSO = ROOT / 'arch/arm64/kernel/vdso.c'
+          HEADER = ROOT / 'include/linux/ghost_uptime.h'
+          MODULE = ROOT / 'kernel/ghost_uptime.c'
+          REPORT = ROOT / 's9-boottime-vdso-l59-report.txt'
+
+          def die(msg):
+              raise SystemExit('ERROR: ' + msg)
+
+          def read(path):
+              if not path.exists():
+                  die(f'missing {path}')
+              return path.read_text(errors='ignore')
+
+          def write(path, data):
+              path.write_text(data)
+
+          report = []
+
+          h = read(HEADER)
+          if 'ghost_uptime_apply_boottime_ts(struct timespec *ts)' not in h:
+              anchor = 'void ghost_uptime_apply_sysinfo(struct sysinfo *info);'
+              if anchor not in h:
+                  die('missing sysinfo prototype anchor in ghost_uptime.h')
+              h = h.replace(anchor, anchor + '\nvoid ghost_uptime_apply_boottime_ts(struct timespec *ts);\nvoid ghost_uptime_apply_boottime_ts64(struct timespec64 *ts);')
+              write(HEADER, h)
+              report.append('header added boottime prototypes')
+          else:
+              report.append('header already has boottime prototypes')
+
+          m = read(MODULE)
+          if 'ghost_uptime_apply_boottime_ts(struct timespec *ts)' not in m:
+              block = """
+
+          void ghost_uptime_apply_boottime_ts(struct timespec *ts)
+          {
+              u64 off = ghost_uptime_offset_secs();
+
+              if (!ts || !off)
+                  return;
+              ts->tv_sec += (time_t)off;
+          }
+          EXPORT_SYMBOL_GPL(ghost_uptime_apply_boottime_ts);
+
+          void ghost_uptime_apply_boottime_ts64(struct timespec64 *ts)
+          {
+              u64 off = ghost_uptime_offset_secs();
+
+              if (!ts || !off)
+                  return;
+              ts->tv_sec += (time64_t)off;
+          }
+          EXPORT_SYMBOL_GPL(ghost_uptime_apply_boottime_ts64);
+          """
+              anchor = 'void ghost_uptime_apply_proc_btime64(struct timespec64 *boottime)'
+              idx = m.find(anchor)
+              if idx < 0:
+                  die('missing proc_btime64 anchor in ghost_uptime.c')
+              m = m[:idx] + block + '\n' + m[idx:]
+              write(MODULE, m)
+              report.append('module added boottime helpers')
+          else:
+              report.append('module already has boottime helpers')
+
+          txt = read(VDSO)
+          orig = txt
+          if '#include <linux/ghost_uptime.h>' not in txt:
+              if '#include <linux/timekeeper_internal.h>' in txt:
+                  txt = txt.replace('#include <linux/timekeeper_internal.h>', '#include <linux/timekeeper_internal.h>\n#include <linux/ghost_uptime.h>', 1)
+              elif '#include "datapage.h"' in txt:
+                  txt = txt.replace('#include "datapage.h"', '#include "datapage.h"\n#include <linux/ghost_uptime.h>', 1)
+              else:
+                  txt = txt.replace('struct vdso_mappings', '#include <linux/ghost_uptime.h>\nstruct vdso_mappings', 1)
+              report.append('vdso.c added ghost_uptime include')
+
+          if 'S9_GHOST_BOOTTIME_VDSO_L59' not in txt:
+              pat = 'struct timespec btm = ktime_to_timespec(tk->offs_boot);'
+              if pat in txt:
+                  txt = txt.replace(pat, pat + '\n\t\t/* S9_GHOST_BOOTTIME_VDSO_L59 */\n\t\tghost_uptime_apply_boottime_ts(&btm);', 1)
+                  report.append('vdso.c patched tk->offs_boot btm fast path')
+              else:
+                  txt2, n = re.subn(
+                      r'(struct\s+timespec\s+btm\s*=\s*ktime_to_timespec\s*\(\s*tk->offs_boot\s*\)\s*;)',
+                      r'\1\n\t\t/* S9_GHOST_BOOTTIME_VDSO_L59 */\n\t\tghost_uptime_apply_boottime_ts(&btm);',
+                      txt,
+                      count=1,
+                  )
+                  if n != 1:
+                      die('cannot patch vdso btm fast path')
+                  txt = txt2
+                  report.append('vdso.c patched tk->offs_boot btm fast path via regex')
+          else:
+              report.append('vdso.c vdso marker already present')
+
+          if txt != orig:
+              write(VDSO, txt)
+          if 'S9_GHOST_BOOTTIME_VDSO_L59' not in read(VDSO):
+              die('vdso marker missing after patch')
+          REPORT.write_text('\n'.join(report) + '\n')
+          print(REPORT.read_text())
+          PY
+          python3 scripts/ci_patch_s9_boottime_vdso_l59.py
+          echo "===== VERIFY CLOCK_BOOTTIME VDSO L59 ====="
+          cat s9-boottime-vdso-l59-report.txt
+          grep -RniE "S9_GHOST_BOOTTIME_VDSO_L59|ghost_uptime_apply_boottime_ts|btm_sec|offs_boot" \
+            arch/arm64/kernel/vdso.c include/linux/ghost_uptime.h kernel/ghost_uptime.c 2>/dev/null | tee s9-boottime-vdso-l59-verify.log || true
+          cp -f s9-boottime-vdso-l59-report.txt ../s9-boottime-vdso-l59-report.txt
+          cp -f s9-boottime-vdso-l59-verify.log ../s9-boottime-vdso-l59-verify.log
+
+      - name: Patch CLOCK_MONOTONIC VDSO data surface L59
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -euo pipefail
+          echo "===== PATCH CLOCK_MONOTONIC VDSO DATA SURFACE L59 ====="
+          cat > scripts/ci_patch_s9_monotonic_vdso_l59.py <<'PY'
+          from pathlib import Path
+          import re
+
+          ROOT = Path('.')
+          HEADER = ROOT / 'include/linux/ghost_uptime.h'
+          MODULE = ROOT / 'kernel/ghost_uptime.c'
+          VDSO = ROOT / 'arch/arm64/kernel/vdso.c'
+          REPORT = ROOT / 's9-monotonic-vdso-l59-report.txt'
+
+          def die(msg):
+              raise SystemExit('ERROR: ' + msg)
+
+          def read(path):
+              if not path.exists():
+                  die(f'missing {path}')
+              return path.read_text(errors='ignore')
+
+          def write(path, data):
+              path.write_text(data)
+
+          def add_include_once(data, include_line):
+              if include_line in data:
+                  return data
+              matches = list(re.finditer(r'#include\s+<[^>]+>', data))
+              if not matches:
+                  die(f'no include anchor for {include_line}')
+              m = matches[-1]
+              return data[:m.end()] + '\n' + include_line + data[m.end():]
+
+          report = []
+
+          h = read(HEADER)
+          if 'ghost_uptime_apply_mono_wtm_sec' not in h:
+              anchor = 'void ghost_uptime_apply_boottime_ts64(struct timespec64 *ts);'
+              if anchor not in h:
+                  anchor = 'void ghost_uptime_apply_sysinfo(struct sysinfo *info);'
+              h = h.replace(anchor, anchor + '\ns64 ghost_uptime_apply_mono_wtm_sec(s64 sec);')
+              write(HEADER, h)
+              report.append('header added monotonic vdso prototype')
+          else:
+              report.append('header already has monotonic vdso prototype')
+
+          m = read(MODULE)
+          if 'ghost_uptime_apply_mono_wtm_sec(s64 sec)' not in m:
+              block = """
+
+          s64 ghost_uptime_apply_mono_wtm_sec(s64 sec)
+          {
+              u64 off = ghost_uptime_offset_secs();
+
+              if (!off)
+                  return sec;
+              return sec + (s64)off;
+          }
+          EXPORT_SYMBOL_GPL(ghost_uptime_apply_mono_wtm_sec);
+          """
+              marker = 'void ghost_uptime_apply_boottime_ts(struct timespec *ts)'
+              idx = m.find(marker)
+              if idx < 0:
+                  marker = 'void ghost_uptime_apply_proc_btime64(struct timespec64 *boottime)'
+                  idx = m.find(marker)
+              if idx < 0:
+                  die('cannot find helper insertion anchor in ghost_uptime.c')
+              m = m[:idx] + block + '\n' + m[idx:]
+              write(MODULE, m)
+              report.append('module added monotonic vdso helper')
+          else:
+              report.append('module already has monotonic vdso helper')
+
+          txt = read(VDSO)
+          orig = txt
+          txt = add_include_once(txt, '#include <linux/ghost_uptime.h>')
+
+          if 'S9_GHOST_MONOTONIC_VDSO_L59' not in txt:
+              patterns = [
+                  (r'(\w+->wtm_clock_sec\s*=\s*)tk->wall_to_monotonic\.tv_sec\s*;',
+                   r'\1ghost_uptime_apply_mono_wtm_sec(tk->wall_to_monotonic.tv_sec);\n\t/* S9_GHOST_MONOTONIC_VDSO_L59 */'),
+                  (r'(\w+\.wtm_clock_sec\s*=\s*)tk->wall_to_monotonic\.tv_sec\s*;',
+                   r'\1ghost_uptime_apply_mono_wtm_sec(tk->wall_to_monotonic.tv_sec);\n\t/* S9_GHOST_MONOTONIC_VDSO_L59 */'),
+                  (r'(vdso_data->wtm_clock_sec\s*=\s*)wall_to_monotonic\.tv_sec\s*;',
+                   r'\1ghost_uptime_apply_mono_wtm_sec(wall_to_monotonic.tv_sec);\n\t/* S9_GHOST_MONOTONIC_VDSO_L59 */'),
+              ]
+              patched = False
+              for pat, rep in patterns:
+                  txt2, n = re.subn(pat, rep, txt, count=1)
+                  if n:
+                      txt = txt2
+                      patched = True
+                      report.append('vdso.c patched wtm_clock_sec assignment')
+                      break
+
+              if not patched:
+                  lines = txt.splitlines()
+                  out = []
+                  did = False
+                  for line in lines:
+                      if (not did and 'wtm_clock_sec' in line and 'wall_to_monotonic.tv_sec' in line and '=' in line and ';' in line):
+                          indent = line[:len(line)-len(line.lstrip())]
+                          lhs = line.split('=',1)[0].strip()
+                          rhs = line.split('=',1)[1].rstrip().rstrip(';').strip()
+                          out.append(f'{indent}{lhs} = ghost_uptime_apply_mono_wtm_sec({rhs});')
+                          out.append(f'{indent}/* S9_GHOST_MONOTONIC_VDSO_L59 */')
+                          did = True
+                          report.append('vdso.c patched wtm_clock_sec assignment via line fallback')
+                      else:
+                          out.append(line)
+                  txt = '\n'.join(out) + ('\n' if orig.endswith('\n') else '')
+
+              if 'S9_GHOST_MONOTONIC_VDSO_L59' not in txt:
+                  report.append('WARNING: no wtm_clock_sec assignment patched; v73 may not affect CLOCK_MONOTONIC VDSO')
+          else:
+              report.append('vdso.c monotonic marker already present')
+
+          write(VDSO, txt)
+          REPORT.write_text('\n'.join(report) + '\n')
+          PY
+          python3 scripts/ci_patch_s9_monotonic_vdso_l59.py
+          echo "===== VERIFY CLOCK_MONOTONIC VDSO L59 ====="
+          cat s9-monotonic-vdso-l59-report.txt
+          grep -RniE "S9_GHOST_MONOTONIC_VDSO_L59|ghost_uptime_apply_mono_wtm_sec|wtm_clock_sec|wall_to_monotonic"             arch/arm64/kernel/vdso.c include/linux/ghost_uptime.h kernel/ghost_uptime.c 2>/dev/null | tee s9-monotonic-vdso-l59-verify.log || true
+          cp -f s9-monotonic-vdso-l59-report.txt ../s9-monotonic-vdso-l59-report.txt
+          cp -f s9-monotonic-vdso-l59-verify.log ../s9-monotonic-vdso-l59-verify.log
+
+      - name: Prepare defconfig
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          CONFIG_DIR="arch/arm64/configs"
+          BASE_DEFCONFIG="$CONFIG_DIR/exynos9810_defconfig"
+          DEVICE_CONFIG="$CONFIG_DIR/$DEVICE_DEFCONFIG"
+          TEMP_CONFIG="$CONFIG_DIR/$TEMP_DEFCONFIG"
+
+          if [ ! -f "$DEVICE_CONFIG" ]; then
+            echo "Missing device defconfig: $DEVICE_CONFIG"
+            exit 1
+          fi
+
+          rm -f "$TEMP_CONFIG"
+
+          if [ -s "$BASE_DEFCONFIG" ]; then
+            cat "$BASE_DEFCONFIG" > "$TEMP_CONFIG"
+            printf '\n' >> "$TEMP_CONFIG"
+            cat "$DEVICE_CONFIG" >> "$TEMP_CONFIG"
+          else
+            cp -f "$DEVICE_CONFIG" "$TEMP_CONFIG"
+          fi
+
+          printf '\n# GitHub Actions target: %s %s Android 10 Q\n' "$DEVICE" "$MODEL_NAME" >> "$TEMP_CONFIG"
+
+          cat >> "$TEMP_CONFIG" <<'EOF'
+
+          # KernelSU Next official legacy v57 SuSFS Bridge L59 manual hook
+          CONFIG_KSU=y
+          CONFIG_KSU_MANUAL_HOOK=y
+          # CONFIG_KSU_KPROBES_HOOK is not set
+          # CONFIG_KSU_KPROBE_HOOKS is not set
+
+          # SuSFS level 1: keep useful core features, disable risky/extra features first
+          CONFIG_KSU_SUSFS=y
+          CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
+          CONFIG_KSU_SUSFS_SUS_PATH=y
+          CONFIG_KSU_SUSFS_SUS_MOUNT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
+          CONFIG_KSU_SUSFS_SUS_KSTAT=y
+          CONFIG_KSU_SUSFS_TRY_UMOUNT=y
+          CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y
+          CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
+          # CONFIG_KSU_SUSFS_ENABLE_LOG is not set
+          # CONFIG_KSU_SUSFS_SUS_OVERLAYFS is not set
+          # CONFIG_KSU_SUSFS_SPOOF_UNAME is not set
+          # CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG is not set
+          # CONFIG_KSU_SUSFS_OPEN_REDIRECT is not set
+          # CONFIG_KSU_SUSFS_SUS_SU is not set
+          EOF
+
+          echo "===== TEMP DEFCONFIG ====="
+          ls -lah "$TEMP_CONFIG"
+          tail -80 "$TEMP_CONFIG" || true
+
+      - name: Build kernel and dtb.img
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -eo pipefail
+
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export CC="clang --target=aarch64-linux-gnu --prefix=/usr/bin/aarch64-linux-gnu- -no-integrated-as"
+          export HOSTCC=gcc
+          export HOSTCXX=g++
+          export AS=aarch64-linux-gnu-as
+          export LD=aarch64-linux-gnu-ld.bfd
+          export AR=aarch64-linux-gnu-ar
+          export NM=aarch64-linux-gnu-nm
+          export OBJCOPY=aarch64-linux-gnu-objcopy
+          export OBJDUMP=aarch64-linux-gnu-objdump
+          export STRIP=aarch64-linux-gnu-strip
+          export READELF=aarch64-linux-gnu-readelf
+          export PLATFORM_VERSION="$PLATFORM_VERSION"
+          export ANDROID_MAJOR_VERSION="$ANDROID_MAJOR_VERSION"
+          export CONFIG_SECTION_MISMATCH_WARN_ONLY=y
+          export KBUILD_BUILD_USER=khiconjk
+          export KBUILD_BUILD_HOST=github-actions
+
+          MAKE_ARGS=(
+            V=0
+            ARCH=arm64
+            SUBARCH=arm64
+            CROSS_COMPILE=aarch64-linux-gnu-
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+            CLANG_TRIPLE=aarch64-linux-gnu-
+            "CC=clang --target=aarch64-linux-gnu --prefix=/usr/bin/aarch64-linux-gnu- -no-integrated-as"
+            HOSTCC=gcc
+            HOSTCXX=g++
+            AS=aarch64-linux-gnu-as
+            LD=aarch64-linux-gnu-ld.bfd
+            AR=aarch64-linux-gnu-ar
+            NM=aarch64-linux-gnu-nm
+            OBJCOPY=aarch64-linux-gnu-objcopy
+            OBJDUMP=aarch64-linux-gnu-objdump
+            STRIP=aarch64-linux-gnu-strip
+            READELF=aarch64-linux-gnu-readelf
+            PLATFORM_VERSION="$PLATFORM_VERSION"
+            ANDROID_MAJOR_VERSION="$ANDROID_MAJOR_VERSION"
+            CONFIG_SECTION_MISMATCH_WARN_ONLY=y
+          )
+
+          echo "===== COMPILER TEST ====="
+          clang --target=aarch64-linux-gnu --prefix=/usr/bin/aarch64-linux-gnu- -no-integrated-as -x c -c /dev/null -o /tmp/clang-arm64-test.o
+          file /tmp/clang-arm64-test.o
+
+          echo "===== DEFCONFIG ====="
+          make "${MAKE_ARGS[@]}" "$TEMP_DEFCONFIG" 2>&1 | tee defconfig.log
+
+          echo "===== OLDDEFCONFIG ====="
+          make "${MAKE_ARGS[@]}" olddefconfig 2>&1 | tee olddefconfig.log
+
+          echo "===== HARD REPAIR KSU/SUSFS CONFIG AFTER OLDDEFCONFIG L59 ====="
+          if [ -f "drivers/kernelsu/Kconfig" ]; then
+            if ! grep -q 'drivers/kernelsu/Kconfig' drivers/Kconfig; then
+              if grep -q '^endmenu' drivers/Kconfig; then
+                sed -i '/^endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+              else
+                printf '\nsource "drivers/kernelsu/Kconfig"\n' >> drivers/Kconfig
+              fi
+              echo "[PATCH] drivers/Kconfig: re-added source drivers/kernelsu/Kconfig"
+            else
+              echo "[OK] drivers/Kconfig already sources drivers/kernelsu/Kconfig"
+            fi
+
+            if ! grep -q 'kernelsu/' drivers/Makefile; then
+              printf '\nobj-$(CONFIG_KSU) += kernelsu/\n' >> drivers/Makefile
+              echo "[PATCH] drivers/Makefile: re-added obj-$(CONFIG_KSU) += kernelsu/"
+            else
+              echo "[OK] drivers/Makefile already includes kernelsu/"
+            fi
+          else
+            echo "[WARN] drivers/kernelsu/Kconfig missing before config force"
+          fi
+
+          python3 - <<'PYCONFIG'
+          from pathlib import Path
+          p = Path('.config')
+          if not p.exists():
+              raise SystemExit('ERROR: .config missing before hard repair')
+          text = p.read_text(errors='ignore').splitlines()
+          set_y = {
+              'CONFIG_KSU',
+              'CONFIG_KSU_MANUAL_HOOK',
+              'CONFIG_KSU_SUSFS',
+              'CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT',
+              'CONFIG_KSU_SUSFS_SUS_PATH',
+              'CONFIG_KSU_SUSFS_SUS_MOUNT',
+              'CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT',
+              'CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT',
+              'CONFIG_KSU_SUSFS_SUS_KSTAT',
+              'CONFIG_KSU_SUSFS_TRY_UMOUNT',
+              'CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT',
+              'CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS',
+          }
+          set_n = {
+              'CONFIG_KSU_DEBUG',
+              'CONFIG_KSU_DISABLE_MANAGER',
+              'CONFIG_KSU_DISABLE_POLICY',
+              'CONFIG_KSU_ALLOWLIST_WORKAROUND',
+              'CONFIG_KSU_KPROBES_HOOK',
+              'CONFIG_KSU_KPROBE_HOOKS',
+              'CONFIG_KSU_SUSFS_ENABLE_LOG',
+              'CONFIG_KSU_SUSFS_SUS_OVERLAYFS',
+              'CONFIG_KSU_SUSFS_SPOOF_UNAME',
+              'CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG',
+              'CONFIG_KSU_SUSFS_OPEN_REDIRECT',
+              'CONFIG_KSU_SUSFS_SUS_SU',
+          }
+          keys = set_y | set_n
+          out = []
+          for line in text:
+              stripped = line.strip()
+              key = None
+              if stripped.startswith('CONFIG_') and '=' in stripped:
+                  key = stripped.split('=', 1)[0]
+              elif stripped.startswith('# CONFIG_') and stripped.endswith(' is not set'):
+                  key = stripped.split()[1]
+              if key in keys:
+                  continue
+              out.append(line)
+          out.append('')
+          out.append('# KSU/SuSFS hard repair L59 after olddefconfig')
+          for k in sorted(set_y):
+              out.append(f'{k}=y')
+          for k in sorted(set_n):
+              out.append(f'# {k} is not set')
+          p.write_text('\n'.join(out) + '\n')
+          print('[PATCH] .config: force-wrote KSU/SuSFS options L59')
+          PYCONFIG
+
+          echo "===== OLDDEFCONFIG AFTER KSU/SUSFS HARD REPAIR L59 ====="
+          make "${MAKE_ARGS[@]}" olddefconfig 2>&1 | tee -a olddefconfig.log
+
+          echo "===== CONFIG CHECK ====="
+          grep -E "CONFIG_SOC_EXYNOS9810|CONFIG_CAMERA_STAR|CONFIG_CAMERA_STAR2|CONFIG_CAMERA_CROWN|CONFIG_EXYNOS_DTBTOOL|CONFIG_BUILD_ARM64_APPENDED|CONFIG_MODULES|CONFIG_ANDROID|CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_SUSFS|CONFIG_KSU_KPROBES_HOOK|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS" .config || true
+
+          if ! grep -q "^CONFIG_KSU=y" .config; then
+            echo "ERROR: CONFIG_KSU was not enabled"
+            exit 1
+          fi
+
+          if ! grep -q "^CONFIG_KSU_MANUAL_HOOK=y" .config; then
+            echo "ERROR: CONFIG_KSU_MANUAL_HOOK was not enabled"
+            exit 1
+          fi
+          if ! grep -q "^CONFIG_KSU_SUSFS=y" .config; then
+            echo "ERROR: CONFIG_KSU_SUSFS was not enabled"
+            grep -n "KSU_SUSFS" .config || true
+            exit 1
+          fi
+
+          if [ ! -f fs/susfs.c ] || [ ! -f include/linux/susfs.h ]; then
+            echo "ERROR: SuSFS files missing before build"
+            ls -lah fs/susfs.c include/linux/susfs.h 2>/dev/null || true
+            exit 1
+          fi
+
+          if ! grep -q "ksu_handle_sys_reboot" kernel/reboot.c; then
+            echo "ERROR: manual reboot hook marker missing; KernelSU-Next Kbuild will reject manual mode"
+            exit 1
+          fi
+
+          echo "===== BUILD IMAGE + DTBS + DTB.IMG ====="
+          make -j"$(nproc --all)" "${MAKE_ARGS[@]}" Image Image.gz dtbs dtb.img 2>&1 | tee build.log
+
+          echo "===== IF dtb.img IS STILL MISSING, TRY dtb.img AGAIN WITH V=1 ====="
+          if [ ! -f "arch/arm64/boot/dtb.img" ]; then
+            make -j"$(nproc --all)" "${MAKE_ARGS[@]}" V=1 dtb.img 2>&1 | tee -a build.log
+          fi
+
+          echo "===== OUTPUTS ====="
+          ls -lah arch/arm64/boot || true
+          find arch/arm64/boot -maxdepth 8 -type f \( -name "Image*" -o -name "*.dtb" -o -name "dtb.img" -o -name "*.ko" \) -print -exec ls -lh {} \; || true
+
+      - name: Build v73 clock surface diagnostic probe
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          OUT_DIR="$GITHUB_WORKSPACE/out"
+          mkdir -p "$OUT_DIR"
+
+          cat > "$OUT_DIR/v73-clock-probe.c" <<'EOF_CPROBE'
+          #define _GNU_SOURCE
+          #include <errno.h>
+          #include <stdio.h>
+          #include <stdlib.h>
+          #include <string.h>
+          #include <time.h>
+          #include <unistd.h>
+          #include <sys/sysinfo.h>
+
+          #ifndef CLOCK_MONOTONIC_RAW
+          #define CLOCK_MONOTONIC_RAW 4
+          #endif
+          #ifndef CLOCK_BOOTTIME
+          #define CLOCK_BOOTTIME 7
+          #endif
+
+          static double ts_sec(struct timespec ts) {
+              return (double)ts.tv_sec + (double)ts.tv_nsec / 1000000000.0;
+          }
+
+          static double read_proc_uptime_first(double *idle_out) {
+              FILE *f = fopen("/proc/uptime", "r");
+              double up = -1.0, idle = -1.0;
+              if (!f) return -1.0;
+              if (fscanf(f, "%lf %lf", &up, &idle) != 2) up = -1.0;
+              fclose(f);
+              if (idle_out) *idle_out = idle;
+              return up;
+          }
+
+          static long long read_btime(void) {
+              FILE *f = fopen("/proc/stat", "r");
+              char line[512];
+              long long b = -1;
+              if (!f) return -1;
+              while (fgets(line, sizeof(line), f)) {
+                  if (sscanf(line, "btime %lld", &b) == 1) break;
+              }
+              fclose(f);
+              return b;
+          }
+
+          int main(void) {
+              printf("===== V73 native clock surface probe =====\n");
+              printf("pid=%ld uid=%ld\n", (long)getpid(), (long)getuid());
+              printf("CLOCK ids: REALTIME=%d MONOTONIC=%d MONOTONIC_RAW=%d BOOTTIME=%d\n",
+                     CLOCK_REALTIME, CLOCK_MONOTONIC, CLOCK_MONOTONIC_RAW, CLOCK_BOOTTIME);
+
+              for (int i = 0; i < 6; ++i) {
+                  struct timespec rt = {0}, mono = {0}, raw = {0}, boot = {0};
+                  struct sysinfo si;
+                  double idle = -1.0;
+                  double proc_up = read_proc_uptime_first(&idle);
+                  long long btime = read_btime();
+                  time_t now = time(NULL);
+                  int er = 0;
+
+                  er |= clock_gettime(CLOCK_REALTIME, &rt);
+                  er |= clock_gettime(CLOCK_MONOTONIC, &mono);
+                  er |= clock_gettime(CLOCK_MONOTONIC_RAW, &raw);
+                  er |= clock_gettime(CLOCK_BOOTTIME, &boot);
+                  memset(&si, 0, sizeof(si));
+                  if (sysinfo(&si) != 0) si.uptime = -1;
+
+                  double rt_s = ts_sec(rt);
+                  double mono_s = ts_sec(mono);
+                  double raw_s = ts_sec(raw);
+                  double boot_s = ts_sec(boot);
+
+                  printf("\n--- sample %d ---\n", i + 1);
+                  printf("CLOCK_REALTIME      %.9f\n", rt_s);
+                  printf("CLOCK_MONOTONIC     %.9f\n", mono_s);
+                  printf("CLOCK_MONOTONIC_RAW %.9f\n", raw_s);
+                  printf("CLOCK_BOOTTIME      %.9f\n", boot_s);
+                  printf("sysinfo.uptime      %ld\n", (long)si.uptime);
+                  printf("/proc/uptime        %.2f %.2f\n", proc_up, idle);
+                  printf("/proc/stat btime    %lld\n", btime);
+                  printf("time(NULL)          %lld\n", (long long)now);
+                  printf("date_minus_btime    %lld\n", btime > 0 ? (long long)now - btime : -1LL);
+                  printf("diff proc-boot      %.6f\n", proc_up - boot_s);
+                  printf("diff proc-mono      %.6f\n", proc_up - mono_s);
+                  printf("diff boot-mono      %.6f\n", boot_s - mono_s);
+                  printf("diff mono-raw       %.6f\n", mono_s - raw_s);
+                  printf("diff sysinfo-boot   %.6f\n", (double)si.uptime - boot_s);
+                  printf("clock_errors_or     %d errno=%d(%s)\n", er, errno, strerror(errno));
+                  fflush(stdout);
+                  sleep(1);
+              }
+              return 0;
+          }
+          EOF_CPROBE
+
+          sed -i 's/^          //' "$OUT_DIR/v73-clock-probe.c"
+
+          echo "===== BUILD ARM64 CLOCK PROBE ROBUST L59 ====="
+          PROBE_LOG="$OUT_DIR/v73-clock-probe-build.log"
+          : > "$PROBE_LOG"
+
+          set +e
+          echo "[TRY] aarch64-linux-gnu-gcc static + -lrt" | tee -a "$PROBE_LOG"
+          aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v73-clock-probe.c" -o "$OUT_DIR/v73-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
+          RC=$?
+
+          if [ "$RC" -ne 0 ]; then
+            echo "[TRY] aarch64-linux-gnu-gcc dynamic + -lrt" | tee -a "$PROBE_LOG"
+            aarch64-linux-gnu-gcc -O2 -Wall -Wextra "$OUT_DIR/v73-clock-probe.c" -o "$OUT_DIR/v73-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
+            RC=$?
+          fi
+
+          if [ "$RC" -ne 0 ]; then
+            echo "[TRY] clang target aarch64-linux-gnu with sysroot" | tee -a "$PROBE_LOG"
+            clang --target=aarch64-linux-gnu --sysroot=/usr/aarch64-linux-gnu -O2 -Wall -Wextra "$OUT_DIR/v73-clock-probe.c" -o "$OUT_DIR/v73-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
+            RC=$?
+          fi
+
+          set -e
+          if [ "$RC" -eq 0 ] && [ -s "$OUT_DIR/v73-clock-probe-arm64" ]; then
+            file "$OUT_DIR/v73-clock-probe-arm64" | tee -a "$PROBE_LOG"
+            chmod +x "$OUT_DIR/v73-clock-probe-arm64"
+            echo "[OK] native clock probe built" | tee -a "$PROBE_LOG"
+          else
+            echo "[WARN] native clock probe build failed; keeping kernel artifact and shell diagnostic only" | tee -a "$PROBE_LOG"
+            cat > "$OUT_DIR/v73-clock-probe-arm64.README.txt" <<'EOF_README'
+          Native clock probe did not compile on the runner.
+          Kernel build should still continue. Use v73-clock-surface-check.bat for shell/proc/dumpsys checks, or send v73-clock-probe-build.log for probe compile diagnosis.
+          EOF_README
+          fi
+
+          cat > "$OUT_DIR/v73-clock-surface-check.bat" <<'EOF_BAT'
+          @echo off
+          setlocal EnableExtensions EnableDelayedExpansion
+          set ADB=adb
+          if exist "D:\platform-tools\adb.exe" set ADB=D:\platform-tools\adb.exe
+          set BIN=%~dp0v73-clock-probe-arm64
+          set LOG=%~dp0v73-clock-surface-check.log
+
+          echo ===== V73 CLOCK SURFACE CHECK ===== > "%LOG%"
+          echo Generated at: %DATE% %TIME% >> "%LOG%"
+          echo ADB: %ADB% >> "%LOG%"
+          echo. >> "%LOG%"
+
+          echo ===== ADB DEVICES ===== >> "%LOG%"
+          "%ADB%" devices >> "%LOG%" 2>&1
+          echo. >> "%LOG%"
+
+          echo ===== BASIC ROOT / KERNEL ===== >> "%LOG%"
+          "%ADB%" shell "su -c 'id; uname -a'" >> "%LOG%" 2>&1
+          echo. >> "%LOG%"
+
+          echo ===== GHOST/SUSFS SYMBOLS ===== >> "%LOG%"
+          "%ADB%" shell "su -c 'cat /proc/kallsyms 2>/dev/null | grep -i ghost_uptime | head -120; cat /proc/kallsyms 2>/dev/null | grep -i susfs | head -80'" >> "%LOG%" 2>&1
+          echo. >> "%LOG%"
+
+          echo ===== PROC / SYSINFO SURFACES ===== >> "%LOG%"
+          "%ADB%" shell "su -c 'cat /proc/uptime; toybox uptime 2>/dev/null || uptime 2>/dev/null; cat /proc/stat | grep btime; date +%%s'" >> "%LOG%" 2>&1
+          echo. >> "%LOG%"
+
+          echo ===== ANDROID ELAPSEDREALTIME SURFACE ===== >> "%LOG%"
+          "%ADB%" shell "dumpsys alarm | grep -iE 'nowRTC|nowELAPSED|RuntimeStarted|Runtime uptime'" >> "%LOG%" 2>&1
+          echo. >> "%LOG%"
+
+          if not exist "%BIN%" (
+            echo WARN: Missing native probe binary: %BIN% >> "%LOG%"
+            echo Continue with shell/proc/dumpsys checks only. >> "%LOG%"
+            echo. >> "%LOG%"
+          ) else (
+            echo ===== PUSH NATIVE CLOCK PROBE ===== >> "%LOG%"
+            "%ADB%" push "%BIN%" /data/local/tmp/v73-clock-probe >> "%LOG%" 2>&1
+            "%ADB%" shell "chmod 755 /data/local/tmp/v73-clock-probe" >> "%LOG%" 2>&1
+            echo. >> "%LOG%"
+
+            echo ===== RUN NATIVE CLOCK PROBE WITHOUT SU ===== >> "%LOG%"
+            "%ADB%" shell "/data/local/tmp/v73-clock-probe" >> "%LOG%" 2>&1
+            echo. >> "%LOG%"
+
+            echo ===== RUN NATIVE CLOCK PROBE WITH SU ===== >> "%LOG%"
+            "%ADB%" shell "su -c /data/local/tmp/v73-clock-probe" >> "%LOG%" 2>&1
+            echo. >> "%LOG%"
+          )
+
+          echo ===== TIMER_LIST / DMESG ===== >> "%LOG%"
+          "%ADB%" shell "su -c 'cat /proc/timer_list 2>/dev/null | head -60; dmesg | grep -iE \"ghost_uptime|ksud|KernelSU|denied\" | tail -120'" >> "%LOG%" 2>&1
+          echo. >> "%LOG%"
+
+          type "%LOG%"
+          echo.
+          echo Saved log: "%LOG%"
+          endlocal
+          EOF_BAT
+
+          sed -i 's/^          //' "$OUT_DIR/v73-clock-surface-check.bat"
+
+          cat > "$OUT_DIR/v73-clock-surface-check-device.sh" <<'EOF_SH'
+          #!/system/bin/sh
+          echo "===== V73 CLOCK SURFACE CHECK DEVICE SH ====="
+          id
+          uname -a
+          echo "-- proc uptime/stat --"
+          cat /proc/uptime
+          grep '^btime ' /proc/stat
+          date +%s
+          echo "-- Android elapsedRealtime --"
+          dumpsys alarm | grep -iE 'nowRTC|nowELAPSED|RuntimeStarted|Runtime uptime'
+          echo "-- native clock probe --"
+          if [ -x /data/local/tmp/v73-clock-probe ]; then
+            /data/local/tmp/v73-clock-probe
+          else
+            echo "Missing /data/local/tmp/v73-clock-probe"
+          fi
+          EOF_SH
+          sed -i 's/^          //' "$OUT_DIR/v73-clock-surface-check-device.sh"
+          chmod +x "$OUT_DIR/v73-clock-surface-check-device.sh"
+
+          ls -lh "$OUT_DIR"/v73-clock-*
+
+      - name: Show useful errors
+        if: failure()
+        shell: bash
+        working-directory: kernel
+        run: |
+          echo "===== ERROR LINES ====="
+          grep -nEi "error:|fatal error:|undefined reference|ld.lld|ld:|No such file|No rule to make target|FAILED|recipe for target|Stop\.|not found|Permission denied|unrecognized option|unknown argument|unsupported option|Illegal option|dtb.img" \
+            clean.log defconfig.log olddefconfig.log build.log 2>/dev/null | tail -350 || true
+
+          echo "===== LAST 350 BUILD LINES ====="
+          tail -350 build.log 2>/dev/null || true
+
+          echo "===== LAST 180 DEFCONFIG LINES ====="
+          tail -180 defconfig.log 2>/dev/null || true
+
+          echo "===== BOOT OUTPUT TREE ====="
+          find arch/arm64/boot -maxdepth 8 -type f -print -exec ls -lh {} \; 2>/dev/null || true
+
+      - name: Prepare failure diagnostics files
+        if: failure()
+        shell: bash
+        working-directory: kernel
+        run: |
+          set +e
+          touch build.log
+          {
+            echo "===== KernelSU config snapshot ====="
+            if [ -f .config ]; then
+              grep -E "CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_SUSFS|CONFIG_KSU_KPROBES_HOOK|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS" .config || true
+            else
+              echo ".config not generated yet"
+            fi
+          } > KernelSU-config.txt
+          {
+            echo "===== SuSFS build info snapshot ====="
+            echo "workflow=v73-ksunext-susfs-monotonic-vdso-l59"
+            echo "date=$(date -u)"
+            echo "DEVICE=${DEVICE:-unknown}"
+            echo "MODEL_NAME=${MODEL_NAME:-unknown}"
+            echo "KSU_ROOT=${KSU_ROOT:-unknown}"
+            echo "KERNEL_PATCH=${KERNEL_PATCH:-unknown}"
+            echo ""
+            echo "--- available susfs logs ---"
+            ls -lah susfs-*.log susfs-*.txt 2>/dev/null || true
+            echo ""
+            echo "--- susfs markers ---"
+            grep -RIn "KSU_NEXT_SUSFS_BRIDGE_L59|CONFIG_KSU_SUSFS|config KSU_SUSFS|CMD_SUSFS|susfs" KernelSU-Next drivers/kernelsu fs include/linux 2>/dev/null | head -500 || true
+          } > SuSFS-build-info.txt
+          ls -lah build.log KernelSU-config.txt SuSFS-build-info.txt || true
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v73-ksunext-susfs-monotonic-vdso-l59
+          path: |
+            kernel/*.log
+            kernel/*.txt
+            kernel/.config
+            kernel/**/*.rej
+            kernel/**/*.orig
+          if-no-files-found: ignore
+          compression-level: 6
+
+      - name: Collect kernel outputs
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -e
+
+          OUT_DIR="$GITHUB_WORKSPACE/out"
+          RAW_DIR="$OUT_DIR/raw"
+
+          mkdir -p "$RAW_DIR"
+
+          echo "===== REQUIRED OUTPUT CHECK ====="
+
+          if [ ! -f "arch/arm64/boot/Image" ]; then
+            echo "ERROR: arch/arm64/boot/Image not found"
+            find arch/arm64/boot -maxdepth 8 -type f -print || true
+            exit 1
+          fi
+
+          if [ ! -f "arch/arm64/boot/dtb.img" ]; then
+            echo "ERROR: arch/arm64/boot/dtb.img not found"
+            echo "Available dtb files:"
+            find arch/arm64/boot -maxdepth 8 -type f \( -name "*.dtb" -o -name "dtb.img" \) -print -exec ls -lh {} \; || true
+            echo "CONFIG_EXYNOS_DTBTOOL:"
+            grep -n "CONFIG_EXYNOS_DTBTOOL" .config || true
+            exit 1
+          fi
+
+          cp -av "arch/arm64/boot/Image" "$RAW_DIR/Image"
+          cp -av "arch/arm64/boot/Image" "$RAW_DIR/zImage"
+          cp -av "arch/arm64/boot/dtb.img" "$RAW_DIR/dtb.img"
+
+          [ -f "arch/arm64/boot/Image.gz" ] && cp -av "arch/arm64/boot/Image.gz" "$RAW_DIR/Image.gz" || true
+          [ -f "arch/arm64/boot/Image.gz-dtb" ] && cp -av "arch/arm64/boot/Image.gz-dtb" "$RAW_DIR/Image.gz-dtb" || true
+
+          find . -type f -name "*.ko" -print0 > "$OUT_DIR/modules.list" || true
+
+          if [ -s "$OUT_DIR/modules.list" ]; then
+            tar --null -czf "$OUT_DIR/modules-${DEVICE}-${MODEL_NAME}.tar.gz" --files-from "$OUT_DIR/modules.list"
+          else
+            echo "No .ko modules found" > "$OUT_DIR/modules-${DEVICE}-${MODEL_NAME}.txt"
+          fi
+
+          cp -av clean.log "$OUT_DIR/clean.log" || true
+          cp -av defconfig.log "$OUT_DIR/defconfig.log" || true
+          cp -av olddefconfig.log "$OUT_DIR/olddefconfig.log" || true
+          cp -av build.log "$OUT_DIR/build.log" || true
+          cp -av ksu-next-build-info.txt "$OUT_DIR/KernelSU-Next-build-info.txt" 2>/dev/null || true
+          cp -av SuSFS-build-info.txt "$OUT_DIR/SuSFS-build-info.txt" 2>/dev/null || true
+          cp -av susfs-*.log "$OUT_DIR/" 2>/dev/null || true
+          cp -av susfs-*.txt "$OUT_DIR/" 2>/dev/null || true
+          cp -av ksu-next-markers-v57.txt "$OUT_DIR/KernelSU-Next-markers-v57.txt" 2>/dev/null || true
+          grep -RIn "KSU_NEXT_MANUAL_HOOK\|ksu_handle_sys_reboot\|ksu_handle_execveat\|ksu_handle_faccessat\|ksu_handle_sys_read\|ksu_handle_stat" fs/exec.c fs/open.c fs/read_write.c fs/stat.c kernel/reboot.c > "$OUT_DIR/KernelSU-manual-hooks.txt" 2>/dev/null || true
+          grep -RIn "KSU_NEXT_BACKPORT_PATH_UMOUNT\|int path_umount(struct path \*path, int flags)\|ksu_next_can_umount" fs/namespace.c fs/internal.h > "$OUT_DIR/KernelSU-path-umount.txt" 2>/dev/null || true
+          grep -RIn "CONFIG_KSU_SUSFS\|SUSFS\|susfs" fs include/linux KernelSU-Next drivers/kernelsu 2>/dev/null > "$OUT_DIR/SuSFS-markers.txt" || true
+          cp -av .config "$OUT_DIR/kernel.config" || true
+          for KSU_CANDIDATE in KernelSU-Next KernelSU drivers/kernelsu kernel/kernelsu; do
+            if [ -e "$KSU_CANDIDATE" ]; then
+              find "$KSU_CANDIDATE" -maxdepth 3 -type f | sort > "$OUT_DIR/KernelSU-files.txt" || true
+              break
+            fi
+          done
+          grep -E "CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_SUSFS|CONFIG_KSU_KPROBES_HOOK|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS" .config > "$OUT_DIR/KernelSU-config.txt" || true
+
+          echo "===== ARTIFACT TREE ====="
+          find "$OUT_DIR" -maxdepth 3 -type f -print -exec ls -lh {} \;
+
+      - name: Package AnyKernel3 zip
+        shell: bash
+        run: |
+          set -e
+
+          OUT_DIR="$GITHUB_WORKSPACE/out"
+          RAW_DIR="$OUT_DIR/raw"
+          AK_DIR="$GITHUB_WORKSPACE/AnyKernel3"
+          SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
+          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-OneUI2.5-Q-v73-ksunext-susfs-monotonic-vdso-l59-${SHORT_SHA}.zip"
+
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 "$AK_DIR"
+
+          cd "$AK_DIR"
+
+          rm -rf .git .github
+          rm -f Image Image.gz Image.gz-dtb Image-dtb zImage zImage-dtb dtb dtb.img dtbo.img
+          cp -av "$RAW_DIR/zImage" ./zImage
+          cp -av "$RAW_DIR/dtb.img" ./dtb.img
+
+          rm -f anykernel.sh
+
+          printf '%s\n' \
+            "### AnyKernel3 Ramdisk Mod Script" \
+            "## Auto-generated for ss-S9" \
+            "## Target: Samsung Galaxy S9 ${MODEL_NAME} / ${DEVICE} / One UI 2.5 Android 10" \
+            "" \
+            "properties() { '" \
+            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} OneUI2.5 Android10 Q v73 KernelSU Next SuSFS Clock Diagnostic L59" \
+            "do.devicecheck=1" \
+            "do.modules=0" \
+            "do.systemless=1" \
+            "do.cleanup=1" \
+            "do.cleanuponabort=0" \
+            "device.name1=${AK_DEVICE_1}" \
+            "device.name2=${AK_DEVICE_2}" \
+            "device.name3=${AK_DEVICE_3}" \
+            "device.name4=${AK_DEVICE_4}" \
+            "device.name5=${DEVICE}" \
+            "supported.versions=" \
+            "supported.patchlevels=" \
+            "'; }" \
+            "" \
+            "BLOCK=boot" \
+            "for CANDIDATE in \\" \
+            "  /dev/block/platform/11120000.ufs/by-name/BOOT \\" \
+            "  /dev/block/platform/11120000.ufs/by-name/boot \\" \
+            "  /dev/block/bootdevice/by-name/boot \\" \
+            "  /dev/block/by-name/boot" \
+            "do" \
+            '  if [ -e "$CANDIDATE" ]; then' \
+            '    BLOCK="$CANDIDATE"' \
+            "    break" \
+            "  fi" \
+            "done" \
+            "" \
+            "IS_SLOT_DEVICE=0" \
+            "RAMDISK_COMPRESSION=auto" \
+            "PATCH_VBMETA_FLAG=auto" \
+            "" \
+            ". tools/ak3-core.sh" \
+            "" \
+            "dump_boot" \
+            "write_boot" \
+            > anykernel.sh
+
+          chmod +x anykernel.sh
+
+          echo "===== anykernel.sh ====="
+          cat anykernel.sh
+
+          zip -r9 "$OUT_DIR/$ZIP_NAME" ./* -x "*.git*" "README.md"
+          ls -lh "$OUT_DIR/$ZIP_NAME"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v73-ksunext-susfs-monotonic-vdso-l59
+          path: |
+            out/*.zip
+            out/raw/*
+            out/*.log
+            out/v73-clock-*
+            out/kernel.config
+            out/modules-*
+            out/KernelSU-*.txt
+            out/SuSFS-*.txt
+            out/susfs-*.log
+            out/susfs-*.txt
+            out/KernelSU-manual-hooks.txt
+            out/KernelSU-path-umount.txt
+            out/KernelSU-Next-build-info.txt
+            out/KernelSU-Next-markers-v57.txt
+          if-no-files-found: error
+          compression-level: 6
