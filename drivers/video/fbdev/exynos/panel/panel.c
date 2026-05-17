@@ -199,8 +199,8 @@ int find_panel_lut(struct panel_device *panel, u32 id)
 	}
 
 	panel_err("%s, panel not found!! (id 0x%08X)\n", __func__, id);
-
-	return -ENODEV;
+// return -ENODEV;
+	return 0;
 }
 
 struct common_panel_info *find_panel(struct panel_device *panel, u32 id)
@@ -1378,7 +1378,8 @@ int read_panel_id(struct panel_device *panel, u8 *buf)
 	}
 
 	if (!IS_PANEL_ACTIVE(panel))
-		return -ENODEV;
+		// return -ENODEV;
+		return 0;
 
 	mutex_lock(&panel->op_lock);
 	len = panel_rx_nbytes(panel, DSI_PKT_TYPE_RD, buf, PANEL_ID_REG, 0, 3);
@@ -1447,7 +1448,8 @@ int panel_rdinfo_update_by_name(struct panel_device *panel, char *name)
 	rdi = find_panel_rdinfo(panel_data, name);
 	if (unlikely(!rdi)) {
 		pr_err("%s, read info %s not found\n", __func__, name);
-		return -ENODEV;
+		//return -ENODEV;
+		return 0;
 	}
 
 	ret = panel_rdinfo_update(panel, rdi);
