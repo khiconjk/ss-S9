@@ -866,7 +866,8 @@ int panel_update_dim_type(struct panel_device *panel, u32 dim_type)
 	ret = panel_maptbl_init(panel);
 	if (unlikely(ret)) {
 		pr_err("%s, failed to resource init\n", __func__);
-		return -ENODEV;
+				// return -ENODEV;
+		return 0;
 	}
 
 	return state;
@@ -881,7 +882,8 @@ int panel_reprobe(struct panel_device *panel)
 	info = panel_detect(panel);
 	if (unlikely(!info)) {
 		panel_err("PANEL:ERR:%s:panel detection failed\n", __func__);
-		return -ENODEV;
+				// return -ENODEV;
+		return 0;
 	}
 
 	ret = panel_prepare(panel, info);
@@ -900,7 +902,8 @@ int panel_reprobe(struct panel_device *panel)
 	ret = panel_poc_probe(panel, info->poc_data);
 	if (unlikely(ret)) {
 		pr_err("%s, failed to probe poc driver\n", __func__);
-		return -ENODEV;
+				// return -ENODEV;
+		return 0;
 	}
 #endif /* CONFIG_SUPPORT_DDI_FLASH */
 
@@ -909,7 +912,8 @@ int panel_reprobe(struct panel_device *panel)
 		ret = panel_dim_flash_resource_init(panel);
 		if (unlikely(ret)) {
 			pr_err("%s, failed to dim flash resource init\n", __func__);
-			return -ENODEV;
+					// return -ENODEV;
+		return 0;
 		}
 	}
 #endif /* CONFIG_SUPPORT_DIM_FLASH */
@@ -917,13 +921,15 @@ int panel_reprobe(struct panel_device *panel)
 	ret = panel_maptbl_init(panel);
 	if (unlikely(ret)) {
 		pr_err("%s, failed to maptbl init\n", __func__);
-		return -ENODEV;
+				// return -ENODEV;
+		return 0;
 	}
 
 	ret = panel_bl_probe(panel);
 	if (unlikely(ret)) {
 		pr_err("%s, failed to probe backlight driver\n", __func__);
-		return -ENODEV;
+				// return -ENODEV;
+		return 0;
 	}
 
 	return 0;
@@ -984,7 +990,8 @@ int panel_probe(struct panel_device *panel)
 	info = panel_detect(panel);
 	if (unlikely(!info)) {
 		panel_err("PANEL:ERR:%s:panel detection failed\n", __func__);
-		return -ENODEV;
+				// return -ENODEV;
+		return 0;
 	}
 
 #ifdef CONFIG_EXYNOS_DECON_LCD_SPI
@@ -1036,7 +1043,8 @@ int panel_probe(struct panel_device *panel)
 	ret = panel_prepare(panel, info);
 	if (unlikely(ret)) {
 		pr_err("%s, failed to prepare common panel driver\n", __func__);
-		return -ENODEV;
+				// return -ENODEV;
+		return 0;
 	}
 
 	panel->lcd = lcd_device_register("panel", panel->dev, panel, NULL);
@@ -1048,7 +1056,8 @@ int panel_probe(struct panel_device *panel)
 	ret = panel_resource_init(panel);
 	if (unlikely(ret)) {
 		pr_err("%s, failed to resource init\n", __func__);
-		return -ENODEV;
+				// return -ENODEV;
+		return 0;
 	}
 
 	resource_copy_by_name(panel_data, panel_data->date, "date");
@@ -1058,32 +1067,37 @@ int panel_probe(struct panel_device *panel)
 	ret = panel_poc_probe(panel, info->poc_data);
 	if (unlikely(ret)) {
 		pr_err("%s, failed to probe poc driver\n", __func__);
-		return -ENODEV;
+				// return -ENODEV;
+		return 0;
 	}
 #endif /* CONFIG_SUPPORT_DDI_FLASH */
 
 	ret = panel_maptbl_init(panel);
 	if (unlikely(ret)) {
 		pr_err("%s, failed to resource init\n", __func__);
-		return -ENODEV;
+				// return -ENODEV;
+		return 0;
 	}
 
 	ret = panel_bl_probe(panel);
 	if (unlikely(ret)) {
 		pr_err("%s, failed to probe backlight driver\n", __func__);
-		return -ENODEV;
+				// return -ENODEV;
+		return 0;
 	}
 
 	ret = panel_sysfs_probe(panel);
 	if (unlikely(ret)) {
 		pr_err("%s, failed to init sysfs\n", __func__);
-		return -ENODEV;
+				// return -ENODEV;
+		return 0;
 	}
 
 	ret = mdnie_probe(panel, info->mdnie_tune);
 	if (unlikely(ret)) {
 		pr_err("%s, failed to probe mdnie driver\n", __func__);
-		return -ENODEV;
+				// return -ENODEV;
+		return 0;
 	}
 
 #ifdef CONFIG_EXYNOS_DECON_LCD_COPR
@@ -1091,7 +1105,8 @@ int panel_probe(struct panel_device *panel)
 	if (unlikely(ret)) {
 		pr_err("%s, failed to probe copr driver\n", __func__);
 		BUG();
-		return -ENODEV;
+				// return -ENODEV;
+		return 0;
 	}
 #endif
 
@@ -1100,7 +1115,8 @@ int panel_probe(struct panel_device *panel)
 	if (unlikely(ret)) {
 		pr_err("%s, failed to probe aod driver\n", __func__);
 		BUG();
-		return -ENODEV;
+				// return -ENODEV;
+		return 0;
 	}
 #endif
 
@@ -2487,7 +2503,8 @@ static int panel_dpui_notifier_callback(struct notifier_block *self,
 	info = find_panel(panel, panel_id);
 	if (unlikely(!info)) {
 		panel_err("%s, panel not found\n", __func__);
-		return -ENODEV;
+				// return -ENODEV;
+		return 0;
 	}
 
 	resource_copy_by_name(panel_data, panel_datetime, "date");
