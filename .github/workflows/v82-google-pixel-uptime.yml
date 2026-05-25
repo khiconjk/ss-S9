@@ -1,4 +1,4 @@
-name: v82 Google Pixel ROM KSU Next + SuSFS Uptime L66
+name: v83 Google Pixel Android 12 S KSU Next + SuSFS Uptime L67
 
 "on":
   workflow_dispatch:
@@ -19,7 +19,7 @@ name: v82 Google Pixel ROM KSU Next + SuSFS Uptime L66
       rom_profile:
         description: "Google Pixel ROM / Android base"
         required: true
-        default: "google_pixel_q"
+        default: "google_pixel_s"
         type: choice
         options:
           - google_pixel_q
@@ -39,9 +39,9 @@ concurrency:
 env:
   ARCH: arm64
   SUBARCH: arm64
-  PLATFORM_VERSION: "10"
-  ANDROID_MAJOR_VERSION: q
-  ROM_NAME: "Google Pixel ROM Android 10 Q"
+  PLATFORM_VERSION: "12"
+  ANDROID_MAJOR_VERSION: s
+  ROM_NAME: "Google Pixel ROM Android 12 S"
   TEMP_DEFCONFIG: exynos9810_temp_defconfig
   SUSFS_BRANCH: "1.4.2-kernel-4.9"
   SUSFS_REPO: "https://gitlab.com/1392726643/susfs4ksu.git"
@@ -91,6 +91,8 @@ jobs:
             gcc-aarch64-linux-gnu \
             gcc-arm-linux-gnueabi \
             git \
+            libc6-dev-arm64-cross \
+            linux-libc-dev-arm64-cross \
             libelf-dev \
             libssl-dev \
             lld \
@@ -269,7 +271,7 @@ jobs:
           echo "Clean done" | tee -a clean.log
 
 
-      - name: Patch kernel release for Google Pixel ROM v82
+      - name: Patch kernel release for Google Pixel ROM v83
         shell: bash
         working-directory: kernel
         run: |
@@ -284,9 +286,9 @@ jobs:
           import re
 
           model = os.environ.get("MODEL_NAME", "S9").replace(" ", "")
-          suffix = f"-{model}-v82-pixel-ksu-susfs-up-l66"
+          suffix = f"-{model}-v83-pixel-ksu-susfs-up-l66"
           if len("4.9.220" + suffix) > 64:
-              suffix = f"-{model}-v82-pixel-up-l66"
+              suffix = f"-{model}-v83-pixel-up-l66"
 
           makefile = Path("Makefile")
           text = makefile.read_text(errors="ignore")
@@ -1797,7 +1799,7 @@ jobs:
             echo "Device: ${DEVICE}"
             echo "Model: ${MODEL_NAME}"
             echo "Android: ${PLATFORM_VERSION}/${ANDROID_MAJOR_VERSION}"
-            echo "Kernel release target: 4.9.220-${MODEL_NAME}-v82-pixel-ksu-susfs-up-l66"
+            echo "Kernel release target: 4.9.220-${MODEL_NAME}-v83-pixel-ksu-susfs-up-l66"
             echo ""
           } > ksu-next-build-info.txt
 
@@ -2577,7 +2579,7 @@ jobs:
                   report.append(f'{path}: unchanged')
 
           if not patched:
-              report.append('WARNING: no posix boottime surface patched; v82 will behave like v69 for elapsedRealtime')
+              report.append('WARNING: no posix boottime surface patched; v83 will behave like v69 for elapsedRealtime')
           else:
               report.append('patched_files=' + ','.join(patched))
 
@@ -2710,6 +2712,186 @@ jobs:
           cp -f s9-boottime-vdso-l66-report.txt ../s9-boottime-vdso-l66-report.txt
           cp -f s9-boottime-vdso-l66-verify.log ../s9-boottime-vdso-l66-verify.log
 
+      - name: Patch Pixel Android 12 elapsedRealtime hard path L67
+        shell: bash
+        working-directory: kernel
+        run: |
+          set -euo pipefail
+          echo "===== PATCH PIXEL ANDROID 12 ELAPSEDREALTIME HARD PATH L67 ====="
+          cat > scripts/ci_patch_pixel_android12_boottime_l67.py <<'PY'
+          from pathlib import Path
+          import re
+
+          ROOT = Path('.')
+          HEADER = ROOT / 'include/linux/ghost_uptime.h'
+          MODULE = ROOT / 'kernel/ghost_uptime.c'
+          POSIX = ROOT / 'kernel/time/posix-timers.c'
+          VDSO = ROOT / 'arch/arm64/kernel/vdso.c'
+          REPORT = ROOT / 's9-pixel-android12-boottime-l67-report.txt'
+
+          def die(msg):
+              raise SystemExit('ERROR: ' + msg)
+
+          def read(path):
+              if not path.exists():
+                  die(f'missing {path}')
+              return path.read_text(errors='ignore')
+
+          def write(path, data):
+              path.write_text(data)
+
+          def add_include_once(data, include_line):
+              if include_line in data:
+                  return data
+              matches = list(re.finditer(r'#include\s+<[^>]+>', data))
+              if matches:
+                  m = matches[-1]
+                  return data[:m.end()] + '\n' + include_line + data[m.end():]
+              return include_line + '\n' + data
+
+          def patch_posix_func(data):
+              # Remove older duplicate call, then add a single call before return 0.
+              pat = re.compile(r'(static\s+int\s+posix_get_boottime\s*\([^)]*\)\s*\{)(.*?)(\})', re.S)
+              m = pat.search(data)
+              if not m:
+                  return data, 0
+              body = m.group(2)
+              body = re.sub(r'\s*ghost_uptime_apply_boottime_ts\s*\(\s*tp\s*\)\s*;', '', body)
+              body2, n = re.subn(r'(return\s+0\s*;)', r'ghost_uptime_apply_boottime_ts(tp);\n\t\1', body, count=1)
+              if n == 0:
+                  return data, 0
+              return data[:m.start()] + m.group(1) + body2 + m.group(3) + data[m.end():], 1
+
+          report = []
+
+          # Header: add an ns helper for future Android 12 clock paths, plus existing ts helpers.
+          h = read(HEADER)
+          if 'ghost_uptime_apply_boottime_ns(u64 ns)' not in h:
+              anchor = 'void ghost_uptime_apply_sysinfo(struct sysinfo *info);'
+              if anchor not in h:
+                  die('missing sysinfo prototype anchor in ghost_uptime.h')
+              h = h.replace(anchor, anchor + '\nu64 ghost_uptime_apply_boottime_ns(u64 ns);')
+              write(HEADER, h)
+              report.append('header added ghost_uptime_apply_boottime_ns prototype')
+          else:
+              report.append('header already has ghost_uptime_apply_boottime_ns prototype')
+
+          # Module: add saturating ns helper. Existing ts helpers keep adding seconds for old code paths.
+          m = read(MODULE)
+          if 'ghost_uptime_apply_boottime_ns(u64 ns)' not in m:
+              block = (
+                  '\n\n'
+                  'u64 ghost_uptime_apply_boottime_ns(u64 ns)\n'
+                  '{\n'
+                  '    u64 off = ghost_uptime_get_offset_ns();\n'
+                  '\n'
+                  '    if (!off)\n'
+                  '        return ns;\n'
+                  '    if (ns > U64_MAX - off)\n'
+                  '        return U64_MAX;\n'
+                  '    return ns + off;\n'
+                  '}\n'
+                  'EXPORT_SYMBOL_GPL(ghost_uptime_apply_boottime_ns);\n'
+              )
+              anchor = 'void ghost_uptime_apply_boottime_ts(struct timespec *ts)'
+              idx = m.find(anchor)
+              if idx < 0:
+                  anchor = 'void ghost_uptime_apply_proc_btime64(struct timespec64 *boottime)'
+                  idx = m.find(anchor)
+              if idx < 0:
+                  die('cannot find boottime/proc_btime anchor in ghost_uptime.c')
+              m = m[:idx] + block + '\n' + m[idx:]
+              write(MODULE, m)
+              report.append('module added ghost_uptime_apply_boottime_ns helper')
+          else:
+              report.append('module already has ghost_uptime_apply_boottime_ns helper')
+
+          # Syscall path: Android 12 falls back here when vDSO use_syscall is forced.
+          p = read(POSIX)
+          p = add_include_once(p, '#include <linux/ghost_uptime.h>')
+          p2, n = patch_posix_func(p)
+          if n == 0 and 'get_monotonic_boottime(tp);' in p2 and 'ghost_uptime_apply_boottime_ts(tp);' not in p2:
+              p2 = p2.replace('get_monotonic_boottime(tp);', 'get_monotonic_boottime(tp);\n\tghost_uptime_apply_boottime_ts(tp);', 1)
+              n = 1
+          if n == 0:
+              die('failed to patch posix_get_boottime in kernel/time/posix-timers.c')
+          write(POSIX, p2)
+          report.append('posix-timers.c patched: CLOCK_BOOTTIME syscall adds ghost offset')
+
+          # vDSO path: Android 12 bionic prefers vDSO for clock_gettime(). Force syscall fallback so
+          # elapsedRealtime uses the patched posix_get_boottime path. Keep the earlier btm_sec patch too.
+          v = read(VDSO)
+          v = add_include_once(v, '#include <linux/ghost_uptime.h>')
+          if 'S9_PIXEL_A12_FORCE_CLOCK_SYSCALL_L67' not in v:
+              v2, n = re.subn(
+                  r'(u32\s+use_syscall\s*=\s*!\s*tk->tkr_mono\.clock->archdata\.vdso_direct\s*;)',
+                  r'\1\n\t/* S9_PIXEL_A12_FORCE_CLOCK_SYSCALL_L67: Android 12 elapsedRealtime must hit patched syscall path. */\n\tuse_syscall = 1;',
+                  v,
+                  count=1,
+              )
+              if n == 0:
+                  v2, n = re.subn(
+                      r'(vdso_data->use_syscall\s*=\s*)use_syscall\s*;',
+                      r'/* S9_PIXEL_A12_FORCE_CLOCK_SYSCALL_L67 */\n\tuse_syscall = 1;\n\t\1use_syscall;',
+                      v,
+                      count=1,
+                  )
+              if n == 0:
+                  die('failed to force vDSO use_syscall in arch/arm64/kernel/vdso.c')
+              v = v2
+              report.append('vdso.c patched: forced clock_gettime syscall fallback for Android 12')
+          else:
+              report.append('vdso.c already has Android 12 force-syscall marker')
+
+          # Best-effort direct btm_sec patch for cases where a ROM ignores use_syscall.
+          # L66 may already have inserted ghost_uptime_apply_boottime_ts(&btm); do not double-add offset.
+          if 'S9_PIXEL_A12_BTM_DIRECT_L67' not in v:
+              if 'ghost_uptime_apply_boottime_ts(&btm);' in v:
+                  v = v.replace('ghost_uptime_apply_boottime_ts(&btm);', '/* S9_PIXEL_A12_BTM_DIRECT_L67: existing btm apply reused; do not double offset. */\n\t\tghost_uptime_apply_boottime_ts(&btm);', 1)
+                  report.append('vdso.c direct btm_sec offset already present from L66; added L67 marker only')
+              else:
+                  v2, n = re.subn(
+                      r'(struct\s+timespec\s+btm\s*=\s*ktime_to_timespec\s*\(\s*tk->offs_boot\s*\)\s*;)',
+                      r'\1\n\t\t/* S9_PIXEL_A12_BTM_DIRECT_L67 */\n\t\tghost_uptime_apply_boottime_ts(&btm);',
+                      v,
+                      count=1,
+                  )
+                  if n:
+                      v = v2
+                      report.append('vdso.c patched: direct btm_sec offset marker added')
+                  else:
+                      report.append('vdso.c direct btm_sec anchor not found; syscall fallback remains primary')
+          else:
+              report.append('vdso.c already has direct btm_sec marker')
+          write(VDSO, v)
+
+          # Hard verification: fail build if these are absent, because Android 12 log proved elapsedRealtime stayed real.
+          p_final = read(POSIX)
+          v_final = read(VDSO)
+          h_final = read(HEADER)
+          m_final = read(MODULE)
+          checks = {
+              'posix_get_boottime patched': 'ghost_uptime_apply_boottime_ts(tp);' in p_final,
+              'vdso force syscall marker': 'S9_PIXEL_A12_FORCE_CLOCK_SYSCALL_L67' in v_final,
+              'header ns helper prototype': 'ghost_uptime_apply_boottime_ns(u64 ns)' in h_final,
+              'module ns helper': 'ghost_uptime_apply_boottime_ns(u64 ns)' in m_final,
+          }
+          for name, ok in checks.items():
+              report.append(f'check {name}: {"OK" if ok else "FAIL"}')
+          if not all(checks.values()):
+              REPORT.write_text('\n'.join(report) + '\n')
+              raise SystemExit('ERROR: Android 12 boottime hard verification failed; see ' + str(REPORT))
+
+          REPORT.write_text('\n'.join(report) + '\n')
+          print(REPORT.read_text())
+          PY
+
+          python3 scripts/ci_patch_pixel_android12_boottime_l67.py
+          echo "===== VERIFY PIXEL ANDROID 12 ELAPSEDREALTIME HARD PATH L67 ====="
+          cat s9-pixel-android12-boottime-l67-report.txt
+          grep -RniE "S9_PIXEL_A12_FORCE_CLOCK_SYSCALL_L67|S9_PIXEL_A12_BTM_DIRECT_L67|ghost_uptime_apply_boottime_ts\(tp\)|ghost_uptime_apply_boottime_ns|posix_get_boottime|vdso_data->use_syscall" \
+            include/linux/ghost_uptime.h kernel/ghost_uptime.c kernel/time/posix-timers.c arch/arm64/kernel/vdso.c 2>/dev/null | tee s9-pixel-android12-boottime-l67-verify.log
+
       - name: Prepare defconfig
         shell: bash
         working-directory: kernel
@@ -2736,7 +2918,7 @@ jobs:
             cp -f "$DEVICE_CONFIG" "$TEMP_CONFIG"
           fi
 
-          printf '\n# GitHub Actions target: %s %s Android 10 Q\n' "$DEVICE" "$MODEL_NAME" >> "$TEMP_CONFIG"
+          printf '\n# GitHub Actions target: %s %s Android 12 S\n' "$DEVICE" "$MODEL_NAME" >> "$TEMP_CONFIG"
 
           cat >> "$TEMP_CONFIG" <<'EOF'
 
@@ -2953,7 +3135,7 @@ jobs:
           ls -lah arch/arm64/boot || true
           find arch/arm64/boot -maxdepth 8 -type f \( -name "Image*" -o -name "*.dtb" -o -name "dtb.img" -o -name "*.ko" \) -print -exec ls -lh {} \; || true
 
-      - name: Build v82 clock surface diagnostic probe
+      - name: Build v83 clock surface diagnostic probe
         shell: bash
         working-directory: kernel
         run: |
@@ -2962,7 +3144,7 @@ jobs:
           OUT_DIR="$GITHUB_WORKSPACE/out"
           mkdir -p "$OUT_DIR"
 
-          cat > "$OUT_DIR/v82-clock-probe.c" <<'EOF_CPROBE'
+          cat > "$OUT_DIR/v83-clock-probe.c" <<'EOF_CPROBE'
           #define _GNU_SOURCE
           #include <errno.h>
           #include <stdio.h>
@@ -3006,7 +3188,7 @@ jobs:
           }
 
           int main(void) {
-              printf("===== V81 native clock surface probe =====\n");
+              printf("===== V83 native clock surface probe =====\n");
               printf("pid=%ld uid=%ld\n", (long)getpid(), (long)getuid());
               printf("CLOCK ids: REALTIME=%d MONOTONIC=%d MONOTONIC_RAW=%d BOOTTIME=%d\n",
                      CLOCK_REALTIME, CLOCK_MONOTONIC, CLOCK_MONOTONIC_RAW, CLOCK_BOOTTIME);
@@ -3055,51 +3237,51 @@ jobs:
           }
           EOF_CPROBE
 
-          sed -i 's/^          //' "$OUT_DIR/v82-clock-probe.c"
+          sed -i 's/^          //' "$OUT_DIR/v83-clock-probe.c"
 
           echo "===== BUILD ARM64 CLOCK PROBE ROBUST L66 ====="
-          PROBE_LOG="$OUT_DIR/v82-clock-probe-build.log"
+          PROBE_LOG="$OUT_DIR/v83-clock-probe-build.log"
           : > "$PROBE_LOG"
 
           set +e
           echo "[TRY] aarch64-linux-gnu-gcc static + -lrt" | tee -a "$PROBE_LOG"
-          aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v82-clock-probe.c" -o "$OUT_DIR/v82-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
+          aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v83-clock-probe.c" -o "$OUT_DIR/v83-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
           RC=$?
 
           if [ "$RC" -ne 0 ]; then
             echo "[TRY] aarch64-linux-gnu-gcc dynamic + -lrt" | tee -a "$PROBE_LOG"
-            aarch64-linux-gnu-gcc -O2 -Wall -Wextra "$OUT_DIR/v82-clock-probe.c" -o "$OUT_DIR/v82-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
+            aarch64-linux-gnu-gcc -O2 -Wall -Wextra "$OUT_DIR/v83-clock-probe.c" -o "$OUT_DIR/v83-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
             RC=$?
           fi
 
           if [ "$RC" -ne 0 ]; then
             echo "[TRY] clang target aarch64-linux-gnu with sysroot" | tee -a "$PROBE_LOG"
-            clang --target=aarch64-linux-gnu --sysroot=/usr/aarch64-linux-gnu -O2 -Wall -Wextra "$OUT_DIR/v82-clock-probe.c" -o "$OUT_DIR/v82-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
+            clang --target=aarch64-linux-gnu --sysroot=/usr/aarch64-linux-gnu -O2 -Wall -Wextra "$OUT_DIR/v83-clock-probe.c" -o "$OUT_DIR/v83-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
             RC=$?
           fi
 
           set -e
-          if [ "$RC" -eq 0 ] && [ -s "$OUT_DIR/v82-clock-probe-arm64" ]; then
-            file "$OUT_DIR/v82-clock-probe-arm64" | tee -a "$PROBE_LOG"
-            chmod +x "$OUT_DIR/v82-clock-probe-arm64"
+          if [ "$RC" -eq 0 ] && [ -s "$OUT_DIR/v83-clock-probe-arm64" ]; then
+            file "$OUT_DIR/v83-clock-probe-arm64" | tee -a "$PROBE_LOG"
+            chmod +x "$OUT_DIR/v83-clock-probe-arm64"
             echo "[OK] native clock probe built" | tee -a "$PROBE_LOG"
           else
             echo "[WARN] native clock probe build failed; keeping kernel artifact and shell diagnostic only" | tee -a "$PROBE_LOG"
-            cat > "$OUT_DIR/v82-clock-probe-arm64.README.txt" <<'EOF_README'
+            cat > "$OUT_DIR/v83-clock-probe-arm64.README.txt" <<'EOF_README'
           Native clock probe did not compile on the runner.
-          Kernel build should still continue. Use v82-clock-surface-check.bat for shell/proc/dumpsys checks, or send v82-clock-probe-build.log for probe compile diagnosis.
+          Kernel build should still continue. Use v83-clock-surface-check.bat for shell/proc/dumpsys checks, or send v83-clock-probe-build.log for probe compile diagnosis.
           EOF_README
           fi
 
-          cat > "$OUT_DIR/v82-clock-surface-check.bat" <<'EOF_BAT'
+          cat > "$OUT_DIR/v83-clock-surface-check.bat" <<'EOF_BAT'
           @echo off
           setlocal EnableExtensions EnableDelayedExpansion
           set ADB=adb
           if exist "D:\platform-tools\adb.exe" set ADB=D:\platform-tools\adb.exe
-          set BIN=%~dp0v82-clock-probe-arm64
-          set LOG=%~dp0v82-clock-surface-check.log
+          set BIN=%~dp0v83-clock-probe-arm64
+          set LOG=%~dp0v83-clock-surface-check.log
 
-          echo ===== V81 CLOCK SURFACE CHECK ===== > "%LOG%"
+          echo ===== V83 CLOCK SURFACE CHECK ===== > "%LOG%"
           echo Generated at: %DATE% %TIME% >> "%LOG%"
           echo ADB: %ADB% >> "%LOG%"
           echo. >> "%LOG%"
@@ -3134,16 +3316,16 @@ jobs:
             echo. >> "%LOG%"
           ) else (
             echo ===== PUSH NATIVE CLOCK PROBE ===== >> "%LOG%"
-            "%ADB%" push "%BIN%" /data/local/tmp/v82-clock-probe >> "%LOG%" 2>&1
-            "%ADB%" shell "chmod 755 /data/local/tmp/v82-clock-probe" >> "%LOG%" 2>&1
+            "%ADB%" push "%BIN%" /data/local/tmp/v83-clock-probe >> "%LOG%" 2>&1
+            "%ADB%" shell "chmod 755 /data/local/tmp/v83-clock-probe" >> "%LOG%" 2>&1
             echo. >> "%LOG%"
 
             echo ===== RUN NATIVE CLOCK PROBE WITHOUT SU ===== >> "%LOG%"
-            "%ADB%" shell "/data/local/tmp/v82-clock-probe" >> "%LOG%" 2>&1
+            "%ADB%" shell "/data/local/tmp/v83-clock-probe" >> "%LOG%" 2>&1
             echo. >> "%LOG%"
 
             echo ===== RUN NATIVE CLOCK PROBE WITH SU ===== >> "%LOG%"
-            "%ADB%" shell "su -c /data/local/tmp/v82-clock-probe" >> "%LOG%" 2>&1
+            "%ADB%" shell "su -c /data/local/tmp/v83-clock-probe" >> "%LOG%" 2>&1
             echo. >> "%LOG%"
           )
 
@@ -3157,11 +3339,11 @@ jobs:
           endlocal
           EOF_BAT
 
-          sed -i 's/^          //' "$OUT_DIR/v82-clock-surface-check.bat"
+          sed -i 's/^          //' "$OUT_DIR/v83-clock-surface-check.bat"
 
-          cat > "$OUT_DIR/v82-clock-surface-check-device.sh" <<'EOF_SH'
+          cat > "$OUT_DIR/v83-clock-surface-check-device.sh" <<'EOF_SH'
           #!/system/bin/sh
-          echo "===== V81 CLOCK SURFACE CHECK DEVICE SH ====="
+          echo "===== V83 CLOCK SURFACE CHECK DEVICE SH ====="
           id
           uname -a
           echo "-- Pixel ROM properties --"
@@ -3178,16 +3360,16 @@ jobs:
           echo "-- Android elapsedRealtime --"
           dumpsys alarm | grep -iE 'nowRTC|nowELAPSED|RuntimeStarted|Runtime uptime'
           echo "-- native clock probe --"
-          if [ -x /data/local/tmp/v82-clock-probe ]; then
-            /data/local/tmp/v82-clock-probe
+          if [ -x /data/local/tmp/v83-clock-probe ]; then
+            /data/local/tmp/v83-clock-probe
           else
-            echo "Missing /data/local/tmp/v82-clock-probe"
+            echo "Missing /data/local/tmp/v83-clock-probe"
           fi
           EOF_SH
-          sed -i 's/^          //' "$OUT_DIR/v82-clock-surface-check-device.sh"
-          chmod +x "$OUT_DIR/v82-clock-surface-check-device.sh"
+          sed -i 's/^          //' "$OUT_DIR/v83-clock-surface-check-device.sh"
+          chmod +x "$OUT_DIR/v83-clock-surface-check-device.sh"
 
-          ls -lh "$OUT_DIR"/v82-clock-*
+          ls -lh "$OUT_DIR"/v83-clock-*
 
       - name: Show useful errors
         if: failure()
@@ -3224,7 +3406,7 @@ jobs:
           } > KernelSU-config.txt
           {
             echo "===== SuSFS build info snapshot ====="
-            echo "workflow=v82-googlepixel-uptime-l66"
+            echo "workflow=v83-googlepixel-a12-uptime-l67"
             echo "date=$(date -u)"
             echo "DEVICE=${DEVICE:-unknown}"
             echo "MODEL_NAME=${MODEL_NAME:-unknown}"
@@ -3243,7 +3425,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v82-googlepixel-uptime-l66
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v83-googlepixel-a12-uptime-l67
           path: |
             kernel/*.log
             kernel/*.txt
@@ -3304,6 +3486,8 @@ jobs:
           cp -av SuSFS-build-info.txt "$OUT_DIR/SuSFS-build-info.txt" 2>/dev/null || true
           cp -av susfs-*.log "$OUT_DIR/" 2>/dev/null || true
           cp -av susfs-*.txt "$OUT_DIR/" 2>/dev/null || true
+          cp -av s9-*.log "$OUT_DIR/" 2>/dev/null || true
+          cp -av s9-*.txt "$OUT_DIR/" 2>/dev/null || true
           cp -av ksu-next-markers-v57.txt "$OUT_DIR/KernelSU-Next-markers-v57.txt" 2>/dev/null || true
           grep -RIn "KSU_NEXT_MANUAL_HOOK\|ksu_handle_sys_reboot\|ksu_handle_execveat\|ksu_handle_faccessat\|ksu_handle_sys_read\|ksu_handle_stat" fs/exec.c fs/open.c fs/read_write.c fs/stat.c kernel/reboot.c > "$OUT_DIR/KernelSU-manual-hooks.txt" 2>/dev/null || true
           grep -RIn "KSU_NEXT_BACKPORT_PATH_UMOUNT\|int path_umount(struct path \*path, int flags)\|ksu_next_can_umount" fs/namespace.c fs/internal.h > "$OUT_DIR/KernelSU-path-umount.txt" 2>/dev/null || true
@@ -3329,7 +3513,7 @@ jobs:
           RAW_DIR="$OUT_DIR/raw"
           AK_DIR="$GITHUB_WORKSPACE/AnyKernel3"
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
-          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-GooglePixelROM-${ANDROID_MAJOR_VERSION}-v82-ksu-susfs-up-l66-${SHORT_SHA}.zip"
+          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-GooglePixelA12-${ANDROID_MAJOR_VERSION}-v83-ksu-susfs-up-l67-${SHORT_SHA}.zip"
 
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 "$AK_DIR"
 
@@ -3348,7 +3532,7 @@ jobs:
             "## Target: Samsung Galaxy S9 ${MODEL_NAME} / ${DEVICE} / ${ROM_NAME}" \
             "" \
             "properties() { '" \
-            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} ${ROM_NAME} v82 KernelSU Next SuSFS Pixel uptime L66" \
+            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} ${ROM_NAME} v83 KernelSU Next SuSFS Pixel Android 12 uptime L67" \
             "do.devicecheck=1" \
             "do.modules=0" \
             "do.systemless=1" \
@@ -3404,15 +3588,15 @@ jobs:
           mkdir -p "$LOG_PACK_DIR"
 
           cat > "$OUT_DIR/README-send-to-chatgpt.txt" <<EOF_README
-          ss-S9 v82 Google Pixel ROM build artifact
+          ss-S9 v83 Google Pixel Android 12 build artifact
 
           Send these files back to ChatGPT when debugging:
-          1. logs-for-chatgpt-${DEVICE}-${MODEL_NAME}-v82.tar.gz
+          1. logs-for-chatgpt-${DEVICE}-${MODEL_NAME}-v83.tar.gz
           2. build.log
           3. defconfig.log
           4. olddefconfig.log
           5. kernel.config
-          6. v82-clock-surface-check.log from your PC after running v82-clock-surface-check.bat
+          6. v83-clock-surface-check.log from your PC after running v83-clock-surface-check.bat
 
           Device: ${DEVICE}
           Model: ${MODEL_NAME}
@@ -3425,9 +3609,9 @@ jobs:
           cp -av "$OUT_DIR"/*.log "$LOG_PACK_DIR"/ 2>/dev/null || true
           cp -av "$OUT_DIR"/*.txt "$LOG_PACK_DIR"/ 2>/dev/null || true
           cp -av "$OUT_DIR"/kernel.config "$LOG_PACK_DIR"/ 2>/dev/null || true
-          cp -av "$OUT_DIR"/v82-clock-* "$LOG_PACK_DIR"/ 2>/dev/null || true
+          cp -av "$OUT_DIR"/v83-clock-* "$LOG_PACK_DIR"/ 2>/dev/null || true
 
-          (cd "$OUT_DIR" && tar -czf "logs-for-chatgpt-${DEVICE}-${MODEL_NAME}-v82.tar.gz" logs-for-chatgpt README-send-to-chatgpt.txt)
+          (cd "$OUT_DIR" && tar -czf "logs-for-chatgpt-${DEVICE}-${MODEL_NAME}-v83.tar.gz" logs-for-chatgpt README-send-to-chatgpt.txt)
           sha256sum "$OUT_DIR"/* 2>/dev/null | tee "$OUT_DIR/SHA256SUMS.txt" || true
 
           echo "===== CHATGPT LOG BUNDLE ====="
@@ -3436,7 +3620,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v82-googlepixel-uptime-l66
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v83-googlepixel-a12-uptime-l67
           path: |
             out/*.zip
             out/raw/*
@@ -3444,13 +3628,15 @@ jobs:
             out/README-send-to-chatgpt.txt
             out/SHA256SUMS.txt
             out/*.log
-            out/v82-clock-*
+            out/v83-clock-*
             out/kernel.config
             out/modules-*
             out/KernelSU-*.txt
             out/SuSFS-*.txt
             out/susfs-*.log
             out/susfs-*.txt
+            out/s9-*.log
+            out/s9-*.txt
             out/KernelSU-manual-hooks.txt
             out/KernelSU-path-umount.txt
             out/KernelSU-Next-build-info.txt
