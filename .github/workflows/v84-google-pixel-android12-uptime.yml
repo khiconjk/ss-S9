@@ -1,4 +1,4 @@
-name: v86 Google Pixel Android 12 S KSU Next + SuSFS Uptime L68-safe + WiFi L69 fixed vendor path
+name: v87 Google Pixel Android 12 S KSU Next + SuSFS Uptime L68-safe + WiFi L70 vendor aliases + WEXT
 
 "on":
   workflow_dispatch:
@@ -39,7 +39,7 @@ name: v86 Google Pixel Android 12 S KSU Next + SuSFS Uptime L68-safe + WiFi L69 
       wifi_nvram_file:
         description: "WiFi NVRAM file under /vendor/etc/wifi"
         required: true
-        default: "nvram.txt_r02b_b2"
+        default: "nvram.txt_murata_r041_b2"
         type: choice
         options:
           - nvram.txt_r02b_b2
@@ -330,7 +330,7 @@ jobs:
           echo "Clean done" | tee -a clean.log
 
 
-      - name: Patch kernel release for Google Pixel ROM v86
+      - name: Patch kernel release for Google Pixel ROM v87
         shell: bash
         working-directory: kernel
         run: |
@@ -345,9 +345,9 @@ jobs:
           import re
 
           model = os.environ.get("MODEL_NAME", "S9").replace(" ", "")
-          suffix = f"-{model}-v86-pixel-ksu-susfs-up-l66"
+          suffix = f"-{model}-v87-pixel-ksu-susfs-up-l66"
           if len("4.9.220" + suffix) > 64:
-              suffix = f"-{model}-v86-pixel-up-l66"
+              suffix = f"-{model}-v87-pixel-up-l66"
 
           makefile = Path("Makefile")
           text = makefile.read_text(errors="ignore")
@@ -1858,7 +1858,7 @@ jobs:
             echo "Device: ${DEVICE}"
             echo "Model: ${MODEL_NAME}"
             echo "Android: ${PLATFORM_VERSION}/${ANDROID_MAJOR_VERSION}"
-            echo "Kernel release target: 4.9.220-${MODEL_NAME}-v86-pixel-ksu-susfs-up-l66"
+            echo "Kernel release target: 4.9.220-${MODEL_NAME}-v87-pixel-ksu-susfs-up-l66"
             echo ""
           } > ksu-next-build-info.txt
 
@@ -2638,7 +2638,7 @@ jobs:
                   report.append(f'{path}: unchanged')
 
           if not patched:
-              report.append('WARNING: no posix boottime surface patched; v86 will behave like v69 for elapsedRealtime')
+              report.append('WARNING: no posix boottime surface patched; v87 will behave like v69 for elapsedRealtime')
           else:
               report.append('patched_files=' + ','.join(patched))
 
@@ -3163,12 +3163,12 @@ jobs:
           tail -80 "$TEMP_CONFIG" || true
 
 
-      - name: Patch Pixel Android 12 WiFi firmware paths v86
+      - name: Patch Pixel Android 12 WiFi firmware paths v87
         shell: bash
         working-directory: kernel
         run: |
           set -euo pipefail
-          echo "===== PATCH PIXEL ANDROID 12 WIFI FIRMWARE PATHS V86 ====="
+          echo "===== PATCH PIXEL ANDROID 12 WIFI FIRMWARE PATHS V87 ====="
           CONFIG_DIR="arch/arm64/configs"
           TEMP_CONFIG="$CONFIG_DIR/$TEMP_DEFCONFIG"
           if [ ! -f "$TEMP_CONFIG" ]; then
@@ -3178,27 +3178,34 @@ jobs:
 
           cat >> "$TEMP_CONFIG" <<EOF_WIFI
 
-          # Pixel Android 12 / vendor partition WiFi firmware path fix v86 L69
+          # Pixel Android 12 / vendor partition WiFi firmware path fix v87 L70
           # IMPORTANT: DHD code prefixes VENDOR_PATH (/vendor on Android >= 8),
           # so CONFIG_BCMDHD_* must be /etc/wifi/..., not /vendor/etc/wifi/...
           CONFIG_BROADCOM_WIFI=y
           CONFIG_BCMDHD_PCIE=y
           CONFIG_BCMDHD_OOB_HOST_WAKE=y
+          CONFIG_BCMDHD_GET_OOB_STATE=y
           CONFIG_BROADCOM_WIFI_RESERVED_MEM=y
+          # Pixel Android 12 Samsung vendor HAL compatibility: allow legacy WEXT private ioctl fallback.
+          CONFIG_WIRELESS_EXT=y
+          CONFIG_WEXT_CORE=y
+          CONFIG_WEXT_PROC=y
+          CONFIG_WEXT_PRIV=y
+          CONFIG_CFG80211_WEXT=y
           CONFIG_BCMDHD_FW_PATH="/etc/wifi/${WIFI_FW_FILE}"
           CONFIG_BCMDHD_NVRAM_PATH="/etc/wifi/${WIFI_NVRAM_FILE}"
           EOF_WIFI
 
           echo "===== WIFI DEFCONFIG TAIL ====="
-          grep -nE "CONFIG_BROADCOM_WIFI|CONFIG_BCMDHD|CONFIG_WLAN|CFG80211" "$TEMP_CONFIG" | tail -80 || true
+          grep -nE "CONFIG_BROADCOM_WIFI|CONFIG_BCMDHD|CONFIG_WLAN|CFG80211|CONFIG_WEXT|CONFIG_WIRELESS_EXT" "$TEMP_CONFIG" | tail -80 || true
 
-      - name: Patch Broadcom DHD Pixel vendor firmware path L69
+      - name: Patch Broadcom DHD Pixel vendor firmware path L70
         shell: bash
         working-directory: kernel
         run: |
           set -euo pipefail
-          echo "===== PATCH BROADCOM DHD PIXEL VENDOR FIRMWARE PATH L69 ====="
-          cat > scripts/ci_patch_bcmdhd_pixel_vendor_path_l69.py <<'PY'
+          echo "===== PATCH BROADCOM DHD PIXEL VENDOR FIRMWARE PATH L70 ====="
+          cat > scripts/ci_patch_bcmdhd_pixel_vendor_path_l70.py <<'PY'
           from pathlib import Path
           import os
           import re
@@ -3206,7 +3213,7 @@ jobs:
           root = Path('.')
           report = []
           fw_file = os.environ.get('WIFI_FW_FILE', 'bcmdhd_sta.bin_b2')
-          nv_file = os.environ.get('WIFI_NVRAM_FILE', 'nvram.txt_r02b_b2')
+          nv_file = os.environ.get('WIFI_NVRAM_FILE', 'nvram.txt_murata_r041_b2')
           fw_abs = f'/vendor/etc/wifi/{fw_file}'
           nv_abs = f'/vendor/etc/wifi/{nv_file}'
 
@@ -3221,7 +3228,7 @@ jobs:
           txt = path.read_text(errors='ignore')
           orig = txt
 
-          marker = 'S9_PIXEL_WIFI_VENDOR_PATH_L69'
+          marker = 'S9_PIXEL_WIFI_VENDOR_PATH_L70'
           if marker not in txt:
               macro = f"""
           /* {marker}: Pixel Android 12 vendor firmware path override.
@@ -3229,11 +3236,11 @@ jobs:
            * On Android >= 8, VENDOR_PATH is normally /vendor, so CONFIG must not already
            * include /vendor. Some ROMs/defconfigs get this wrong; force absolute paths here.
            */
-          #ifndef S9_PIXEL_WIFI_FW_PATH_L69
-          #define S9_PIXEL_WIFI_FW_PATH_L69 \"{fw_abs}\"
+          #ifndef S9_PIXEL_WIFI_FW_PATH_L70
+          #define S9_PIXEL_WIFI_FW_PATH_L70 \"{fw_abs}\"
           #endif
-          #ifndef S9_PIXEL_WIFI_NV_PATH_L69
-          #define S9_PIXEL_WIFI_NV_PATH_L69 \"{nv_abs}\"
+          #ifndef S9_PIXEL_WIFI_NV_PATH_L70
+          #define S9_PIXEL_WIFI_NV_PATH_L70 \"{nv_abs}\"
           #endif
           """
               anchors = [
@@ -3254,8 +3261,8 @@ jobs:
               report.append('macros already present')
 
           patterns = [
-              (r'fw\s*=\s*VENDOR_PATH\s+CONFIG_BCMDHD_FW_PATH\s*;', 'fw = S9_PIXEL_WIFI_FW_PATH_L69;'),
-              (r'nv\s*=\s*VENDOR_PATH\s+CONFIG_BCMDHD_NVRAM_PATH\s*;', 'nv = S9_PIXEL_WIFI_NV_PATH_L69;'),
+              (r'fw\s*=\s*VENDOR_PATH\s+CONFIG_BCMDHD_FW_PATH\s*;', 'fw = S9_PIXEL_WIFI_FW_PATH_L70;'),
+              (r'nv\s*=\s*VENDOR_PATH\s+CONFIG_BCMDHD_NVRAM_PATH\s*;', 'nv = S9_PIXEL_WIFI_NV_PATH_L70;'),
           ]
           for pat, repl in patterns:
               txt2, n = re.subn(pat, repl, txt, count=1)
@@ -3268,16 +3275,16 @@ jobs:
               path.write_text(txt)
               report.append(f'patched {path}')
 
-          (root / 's9-pixel-a12-wifi-vendor-path-l69-report.txt').write_text('\n'.join(report) + '\n')
-          print((root / 's9-pixel-a12-wifi-vendor-path-l69-report.txt').read_text())
+          (root / 's9-pixel-a12-wifi-vendor-path-l70-report.txt').write_text('\n'.join(report) + '\n')
+          print((root / 's9-pixel-a12-wifi-vendor-path-l70-report.txt').read_text())
           PY
-          python3 scripts/ci_patch_bcmdhd_pixel_vendor_path_l69.py
+          python3 scripts/ci_patch_bcmdhd_pixel_vendor_path_l70.py
 
-          echo "===== VERIFY BROADCOM DHD WIFI PATH L69 ====="
-          cat s9-pixel-a12-wifi-vendor-path-l69-report.txt
+          echo "===== VERIFY BROADCOM DHD WIFI PATH L70 ====="
+          cat s9-pixel-a12-wifi-vendor-path-l70-report.txt
           grep -RniE "S9_PIXEL_WIFI|CONFIG_BCMDHD_FW_PATH|CONFIG_BCMDHD_NVRAM_PATH|VENDOR_PATH CONFIG_BCMDHD|fw = S9_PIXEL|nv = S9_PIXEL" \
             drivers/net/wireless/bcmdhd_101_16 drivers/net/wireless/bcmdhd 2>/dev/null | head -120 || true
-          cp -f s9-pixel-a12-wifi-vendor-path-l69-report.txt ../s9-pixel-a12-wifi-vendor-path-l69-report.txt
+          cp -f s9-pixel-a12-wifi-vendor-path-l70-report.txt ../s9-pixel-a12-wifi-vendor-path-l70-report.txt
 
       - name: Build kernel and dtb.img
         shell: bash
@@ -3420,7 +3427,7 @@ jobs:
           PYCONFIG
 
 
-          echo "===== HARD REPAIR WIFI CONFIG FOR PIXEL ANDROID 12 V86 L69 ====="
+          echo "===== HARD REPAIR WIFI CONFIG FOR PIXEL ANDROID 12 V87 L70 ====="
           python3 - <<'PYWIFI'
           from pathlib import Path
           import os
@@ -3428,13 +3435,19 @@ jobs:
           if not p.exists():
               raise SystemExit('ERROR: .config missing before WiFi hard repair')
           fw = os.environ.get('WIFI_FW_FILE', 'bcmdhd_sta.bin_b2')
-          nv = os.environ.get('WIFI_NVRAM_FILE', 'nvram.txt_r02b_b2')
+          nv = os.environ.get('WIFI_NVRAM_FILE', 'nvram.txt_murata_r041_b2')
           lines = p.read_text(errors='ignore').splitlines()
           force = {
               'CONFIG_BROADCOM_WIFI': 'y',
               'CONFIG_BCMDHD_PCIE': 'y',
               'CONFIG_BCMDHD_OOB_HOST_WAKE': 'y',
               'CONFIG_BROADCOM_WIFI_RESERVED_MEM': 'y',
+              'CONFIG_BCMDHD_GET_OOB_STATE': 'y',
+              'CONFIG_WIRELESS_EXT': 'y',
+              'CONFIG_WEXT_CORE': 'y',
+              'CONFIG_WEXT_PROC': 'y',
+              'CONFIG_WEXT_PRIV': 'y',
+              'CONFIG_CFG80211_WEXT': 'y',
               # DHD prepends VENDOR_PATH=/vendor on Android >= 8; do not put /vendor here.
               'CONFIG_BCMDHD_FW_PATH': f'"/etc/wifi/{fw}"',
               'CONFIG_BCMDHD_NVRAM_PATH': f'"/etc/wifi/{nv}"',
@@ -3452,19 +3465,19 @@ jobs:
                   continue
               out.append(line)
           out.append('')
-          out.append('# Pixel Android 12 WiFi firmware path hard repair v86 L69')
+          out.append('# Pixel Android 12 WiFi firmware path hard repair v87 L70')
           for k, v in force.items():
               out.append(f'{k}={v}')
           p.write_text('\n'.join(out) + '\n')
           print(f'[PATCH] .config: forced Broadcom WiFi paths: /vendor/etc/wifi/{fw} + /vendor/etc/wifi/{nv}')
           PYWIFI
-          grep -nE "CONFIG_BROADCOM_WIFI|CONFIG_BCMDHD|CONFIG_WLAN|CFG80211" .config | tail -100 || true
+          grep -nE "CONFIG_BROADCOM_WIFI|CONFIG_BCMDHD|CONFIG_WLAN|CFG80211|CONFIG_WEXT|CONFIG_WIRELESS_EXT" .config | tail -100 || true
 
           echo "===== OLDDEFCONFIG AFTER KSU/SUSFS HARD REPAIR L66 ====="
           make "${MAKE_ARGS[@]}" olddefconfig 2>&1 | tee -a olddefconfig.log
 
           echo "===== CONFIG CHECK ====="
-          grep -E "CONFIG_SOC_EXYNOS9810|CONFIG_CAMERA_STAR|CONFIG_CAMERA_STAR2|CONFIG_CAMERA_CROWN|CONFIG_EXYNOS_DTBTOOL|CONFIG_BUILD_ARM64_APPENDED|CONFIG_MODULES|CONFIG_ANDROID|CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_SUSFS|CONFIG_KSU_KPROBES_HOOK|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS|CONFIG_BCMDHD|CONFIG_BROADCOM_WIFI|CONFIG_CFG80211" .config || true
+          grep -E "CONFIG_SOC_EXYNOS9810|CONFIG_CAMERA_STAR|CONFIG_CAMERA_STAR2|CONFIG_CAMERA_CROWN|CONFIG_EXYNOS_DTBTOOL|CONFIG_BUILD_ARM64_APPENDED|CONFIG_MODULES|CONFIG_ANDROID|CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_SUSFS|CONFIG_KSU_KPROBES_HOOK|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS|CONFIG_BCMDHD|CONFIG_BROADCOM_WIFI|CONFIG_CFG80211|CONFIG_WEXT|CONFIG_WIRELESS_EXT" .config || true
 
           if ! grep -q "^CONFIG_KSU=y" .config; then
             echo "ERROR: CONFIG_KSU was not enabled"
@@ -3504,7 +3517,7 @@ jobs:
           ls -lah arch/arm64/boot || true
           find arch/arm64/boot -maxdepth 8 -type f \( -name "Image*" -o -name "*.dtb" -o -name "dtb.img" -o -name "*.ko" \) -print -exec ls -lh {} \; || true
 
-      - name: Build v86 clock surface diagnostic probe
+      - name: Build v87 clock surface diagnostic probe
         shell: bash
         working-directory: kernel
         run: |
@@ -3513,7 +3526,7 @@ jobs:
           OUT_DIR="$GITHUB_WORKSPACE/out"
           mkdir -p "$OUT_DIR"
 
-          cat > "$OUT_DIR/v86-clock-probe.c" <<'EOF_CPROBE'
+          cat > "$OUT_DIR/v87-clock-probe.c" <<'EOF_CPROBE'
           #define _GNU_SOURCE
           #include <errno.h>
           #include <stdio.h>
@@ -3557,7 +3570,7 @@ jobs:
           }
 
           int main(void) {
-              printf("===== V86 native clock surface probe =====\n");
+              printf("===== V87 native clock surface probe =====\n");
               printf("pid=%ld uid=%ld\n", (long)getpid(), (long)getuid());
               printf("CLOCK ids: REALTIME=%d MONOTONIC=%d MONOTONIC_RAW=%d BOOTTIME=%d\n",
                      CLOCK_REALTIME, CLOCK_MONOTONIC, CLOCK_MONOTONIC_RAW, CLOCK_BOOTTIME);
@@ -3606,53 +3619,53 @@ jobs:
           }
           EOF_CPROBE
 
-          sed -i 's/^          //' "$OUT_DIR/v86-clock-probe.c"
+          sed -i 's/^          //' "$OUT_DIR/v87-clock-probe.c"
 
           echo "===== BUILD ARM64 CLOCK PROBE ROBUST L66 ====="
-          PROBE_LOG="$OUT_DIR/v86-clock-probe-build.log"
+          PROBE_LOG="$OUT_DIR/v87-clock-probe-build.log"
           : > "$PROBE_LOG"
 
           set +e
           echo "[TRY] aarch64-linux-gnu-gcc static + -lrt" | tee -a "$PROBE_LOG"
-          aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v86-clock-probe.c" -o "$OUT_DIR/v86-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
+          aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v87-clock-probe.c" -o "$OUT_DIR/v87-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
           RC=$?
 
           if [ "$RC" -ne 0 ]; then
             echo "[TRY] aarch64-linux-gnu-gcc dynamic + -lrt" | tee -a "$PROBE_LOG"
-            aarch64-linux-gnu-gcc -O2 -Wall -Wextra "$OUT_DIR/v86-clock-probe.c" -o "$OUT_DIR/v86-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
+            aarch64-linux-gnu-gcc -O2 -Wall -Wextra "$OUT_DIR/v87-clock-probe.c" -o "$OUT_DIR/v87-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
             RC=$?
           fi
 
           if [ "$RC" -ne 0 ]; then
             echo "[TRY] clang target aarch64-linux-gnu with sysroot" | tee -a "$PROBE_LOG"
-            clang --target=aarch64-linux-gnu --sysroot=/usr/aarch64-linux-gnu -O2 -Wall -Wextra "$OUT_DIR/v86-clock-probe.c" -o "$OUT_DIR/v86-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
+            clang --target=aarch64-linux-gnu --sysroot=/usr/aarch64-linux-gnu -O2 -Wall -Wextra "$OUT_DIR/v87-clock-probe.c" -o "$OUT_DIR/v87-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
             RC=$?
           fi
 
           set -e
-          if [ "$RC" -eq 0 ] && [ -s "$OUT_DIR/v86-clock-probe-arm64" ]; then
-            file "$OUT_DIR/v86-clock-probe-arm64" | tee -a "$PROBE_LOG"
-            chmod +x "$OUT_DIR/v86-clock-probe-arm64"
+          if [ "$RC" -eq 0 ] && [ -s "$OUT_DIR/v87-clock-probe-arm64" ]; then
+            file "$OUT_DIR/v87-clock-probe-arm64" | tee -a "$PROBE_LOG"
+            chmod +x "$OUT_DIR/v87-clock-probe-arm64"
             echo "[OK] native clock probe built" | tee -a "$PROBE_LOG"
           else
             echo "[WARN] native clock probe build failed; keeping kernel artifact and shell diagnostic only" | tee -a "$PROBE_LOG"
-            cat > "$OUT_DIR/v86-clock-probe-arm64.README.txt" <<'EOF_README'
+            cat > "$OUT_DIR/v87-clock-probe-arm64.README.txt" <<'EOF_README'
           Native clock probe did not compile on the runner.
-          Kernel build should still continue. Use v86-clock-surface-check.bat for shell/proc/dumpsys checks, or send v86-clock-probe-build.log for probe compile diagnosis.
+          Kernel build should still continue. Use v87-clock-surface-check.bat for shell/proc/dumpsys checks, or send v87-clock-probe-build.log for probe compile diagnosis.
           EOF_README
           fi
 
-          cat > "$OUT_DIR/v86-clock-surface-check.bat" <<'EOF_BAT'
+          cat > "$OUT_DIR/v87-clock-surface-check.bat" <<'EOF_BAT'
           @echo off
           setlocal EnableExtensions EnableDelayedExpansion
           set ADB=adb
           if exist "D:\platform-tools\adb.exe" set ADB=D:\platform-tools\adb.exe
-          set BIN=%~dp0v86-clock-probe-arm64
-          if not exist "%BIN%" if exist "%~dp0logs-for-chatgpt\v86-clock-probe-arm64" set BIN=%~dp0logs-for-chatgpt\v86-clock-probe-arm64
-          if not exist "%BIN%" if exist "%~dp0logs-for-chatgpt-starlte-G960NK-v86\logs-for-chatgpt\v86-clock-probe-arm64" set BIN=%~dp0logs-for-chatgpt-starlte-G960NK-v86\logs-for-chatgpt\v86-clock-probe-arm64
-          set LOG=%~dp0v86-clock-surface-check.log
+          set BIN=%~dp0v87-clock-probe-arm64
+          if not exist "%BIN%" if exist "%~dp0logs-for-chatgpt\v87-clock-probe-arm64" set BIN=%~dp0logs-for-chatgpt\v87-clock-probe-arm64
+          if not exist "%BIN%" if exist "%~dp0logs-for-chatgpt-starlte-G960NK-v87\logs-for-chatgpt\v87-clock-probe-arm64" set BIN=%~dp0logs-for-chatgpt-starlte-G960NK-v87\logs-for-chatgpt\v87-clock-probe-arm64
+          set LOG=%~dp0v87-clock-surface-check.log
 
-          echo ===== V86 CLOCK SURFACE CHECK ===== > "%LOG%"
+          echo ===== V87 CLOCK SURFACE CHECK ===== > "%LOG%"
           echo Generated at: %DATE% %TIME% >> "%LOG%"
           echo ADB: %ADB% >> "%LOG%"
           echo. >> "%LOG%"
@@ -3687,25 +3700,29 @@ jobs:
             echo. >> "%LOG%"
           ) else (
             echo ===== PUSH NATIVE CLOCK PROBE ===== >> "%LOG%"
-            "%ADB%" push "%BIN%" /data/local/tmp/v86-clock-probe >> "%LOG%" 2>&1
-            "%ADB%" shell "chmod 755 /data/local/tmp/v86-clock-probe" >> "%LOG%" 2>&1
+            "%ADB%" push "%BIN%" /data/local/tmp/v87-clock-probe >> "%LOG%" 2>&1
+            "%ADB%" shell "chmod 755 /data/local/tmp/v87-clock-probe" >> "%LOG%" 2>&1
             echo. >> "%LOG%"
 
             echo ===== RUN NATIVE CLOCK PROBE WITHOUT SU ===== >> "%LOG%"
-            "%ADB%" shell "/data/local/tmp/v86-clock-probe" >> "%LOG%" 2>&1
+            "%ADB%" shell "/data/local/tmp/v87-clock-probe" >> "%LOG%" 2>&1
             echo. >> "%LOG%"
 
             echo ===== RUN NATIVE CLOCK PROBE WITH SU ===== >> "%LOG%"
-            "%ADB%" shell "su -c /data/local/tmp/v86-clock-probe" >> "%LOG%" 2>&1
+            "%ADB%" shell "su -c /data/local/tmp/v87-clock-probe" >> "%LOG%" 2>&1
             echo. >> "%LOG%"
           )
 
-          echo ===== WIFI SURFACE CHECK V86 L69 ===== >> "%LOG%"
-          "%ADB%" shell "su -c 'echo --- expected firmware ---; echo /vendor/etc/wifi/__WIFI_FW_FILE__; echo /vendor/etc/wifi/__WIFI_NVRAM_FILE__; ls -l /vendor/etc/wifi/__WIFI_FW_FILE__ /vendor/etc/wifi/__WIFI_NVRAM_FILE__ 2>&1; echo --- props ---; getprop init.svc.wpa_supplicant; getprop wlan.driver.status; getprop wifi.interface; echo --- dhd module parameters ---; for d in /sys/module/dhd /sys/module/bcmdhd /sys/module/dhd_static_buf; do [ -d $d ] && echo MODULE=$d && ls -l $d/parameters 2>/dev/null && cat $d/parameters/firmware_path $d/parameters/nvram_path 2>/dev/null; done; echo --- wifi status before toggle ---; cmd wifi status 2>/dev/null || dumpsys wifi | head -60; echo --- toggle wifi ---; svc wifi disable; sleep 2; svc wifi enable; sleep 8; echo --- wifi status after toggle ---; cmd wifi status 2>/dev/null || dumpsys wifi | head -80; echo --- net ---; ls -l /sys/class/net 2>/dev/null; ip link 2>/dev/null | head -100; echo --- firmware dirs ---; ls -l /vendor/etc/wifi /system/etc/wifi /etc/wifi 2>/dev/null'" >> "%LOG%" 2>&1
+          echo ===== WIFI SURFACE CHECK V87 L70 ===== >> "%LOG%"
+          "%ADB%" shell "su -c 'echo --- expected firmware ---; echo /vendor/etc/wifi/__WIFI_FW_FILE__; echo /vendor/etc/wifi/__WIFI_NVRAM_FILE__; ls -l /vendor/etc/wifi/__WIFI_FW_FILE__ /vendor/etc/wifi/__WIFI_NVRAM_FILE__ /vendor/etc/wifi/bcmdhd_sta.bin /vendor/etc/wifi/nvram_net.txt 2>&1; echo --- props ---; getprop init.svc.wpa_supplicant; getprop init.svc.vendor.wifi_hal_legacy; getprop init.svc.android.hardware.wifi@1.0-service; getprop wlan.driver.status; getprop wifi.interface; getprop ro.product.vendor.device; echo --- dhd module parameters ---; for d in /sys/module/dhd /sys/module/bcmdhd /sys/module/dhd_static_buf; do if [ -d $d ]; then echo MODULE=$d; ls -l $d/parameters 2>/dev/null; for f in firmware_path nvram_path clm_path info_string op_mode dhd_msg_level; do [ -e $d/parameters/$f ] && echo $f=$(cat $d/parameters/$f 2>/dev/null); done; fi; done; echo --- force module params before toggle ---; [ -e /sys/module/dhd/parameters/firmware_path ] && echo /vendor/etc/wifi/__WIFI_FW_FILE__ > /sys/module/dhd/parameters/firmware_path 2>/dev/null || true; [ -e /sys/module/dhd/parameters/nvram_path ] && echo /vendor/etc/wifi/__WIFI_NVRAM_FILE__ > /sys/module/dhd/parameters/nvram_path 2>/dev/null || true; echo --- wifi status before toggle ---; cmd wifi status 2>/dev/null || dumpsys wifi | head -80; echo --- toggle wifi ---; svc wifi disable; sleep 2; svc wifi enable; cmd wifi set-wifi-enabled enabled 2>/dev/null || true; sleep 12; echo --- wifi status after toggle ---; cmd wifi status 2>/dev/null || dumpsys wifi | head -120; echo --- net ---; ls -l /sys/class/net 2>/dev/null; ip link 2>/dev/null | head -120; echo --- firmware dirs ---; ls -l /vendor/etc/wifi /system/etc/wifi /etc/wifi 2>/dev/null'" >> "%LOG%" 2>&1
           echo. >> "%LOG%"
-
+          
+          echo ===== LOGCAT WIFI / HAL ===== >> "%LOG%"
+          "%ADB%" shell "su -c 'logcat -b all -d -t 1200 2>/dev/null | grep -iE \"Wifi|wificond|wpa_supplicant|supplicant|VendorHal|WifiHAL|wifi_hal|wlan|nl80211|cfg80211|dhd|bcmdhd|firmware|nvram|driver\" | tail -260'" >> "%LOG%" 2>&1
+          echo. >> "%LOG%"
+          
           echo ===== TIMER_LIST / DMESG ===== >> "%LOG%"
-          "%ADB%" shell "su -c 'cat /proc/timer_list 2>/dev/null | head -60; dmesg | grep -iE \"ghost_uptime|ksud|KernelSU|denied|wifi|wlan|dhd|bcmdhd|firmware|nvram|cfg80211\" | tail -220'" >> "%LOG%" 2>&1
+          "%ADB%" shell "su -c 'cat /proc/timer_list 2>/dev/null | head -60; echo --- dmesg wifi filtered ---; dmesg 2>/dev/null | grep -iE \"ghost_uptime|ksud|KernelSU|avc|denied|wifi|wlan|dhd|bcmdhd|firmware|nvram|cfg80211|wpa|supplicant|pcie|pci\" | tail -320; echo --- dmesg tail raw ---; dmesg 2>/dev/null | tail -120'" >> "%LOG%" 2>&1
           echo. >> "%LOG%"
 
           type "%LOG%"
@@ -3714,12 +3731,12 @@ jobs:
           endlocal
           EOF_BAT
 
-          sed -i 's/^          //' "$OUT_DIR/v86-clock-surface-check.bat"
-          sed -i "s#__WIFI_FW_FILE__#${WIFI_FW_FILE}#g; s#__WIFI_NVRAM_FILE__#${WIFI_NVRAM_FILE}#g" "$OUT_DIR/v86-clock-surface-check.bat"
+          sed -i 's/^          //' "$OUT_DIR/v87-clock-surface-check.bat"
+          sed -i "s#__WIFI_FW_FILE__#${WIFI_FW_FILE}#g; s#__WIFI_NVRAM_FILE__#${WIFI_NVRAM_FILE}#g" "$OUT_DIR/v87-clock-surface-check.bat"
 
-          cat > "$OUT_DIR/v86-clock-surface-check-device.sh" <<'EOF_SH'
+          cat > "$OUT_DIR/v87-clock-surface-check-device.sh" <<'EOF_SH'
           #!/system/bin/sh
-          echo "===== V86 CLOCK SURFACE CHECK DEVICE SH ====="
+          echo "===== V87 CLOCK SURFACE CHECK DEVICE SH ====="
           id
           uname -a
           echo "-- Pixel ROM properties --"
@@ -3736,16 +3753,16 @@ jobs:
           echo "-- Android elapsedRealtime --"
           dumpsys alarm | grep -iE 'nowRTC|nowELAPSED|RuntimeStarted|Runtime uptime'
           echo "-- native clock probe --"
-          if [ -x /data/local/tmp/v86-clock-probe ]; then
-            /data/local/tmp/v86-clock-probe
+          if [ -x /data/local/tmp/v87-clock-probe ]; then
+            /data/local/tmp/v87-clock-probe
           else
-            echo "Missing /data/local/tmp/v86-clock-probe"
+            echo "Missing /data/local/tmp/v87-clock-probe"
           fi
           EOF_SH
-          sed -i 's/^          //' "$OUT_DIR/v86-clock-surface-check-device.sh"
-          chmod +x "$OUT_DIR/v86-clock-surface-check-device.sh"
+          sed -i 's/^          //' "$OUT_DIR/v87-clock-surface-check-device.sh"
+          chmod +x "$OUT_DIR/v87-clock-surface-check-device.sh"
 
-          ls -lh "$OUT_DIR"/v86-clock-*
+          ls -lh "$OUT_DIR"/v87-clock-*
 
       - name: Show useful errors
         if: failure()
@@ -3775,14 +3792,14 @@ jobs:
           {
             echo "===== KernelSU config snapshot ====="
             if [ -f .config ]; then
-              grep -E "CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_SUSFS|CONFIG_KSU_KPROBES_HOOK|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS|CONFIG_BCMDHD|CONFIG_BROADCOM_WIFI|CONFIG_CFG80211" .config || true
+              grep -E "CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_SUSFS|CONFIG_KSU_KPROBES_HOOK|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS|CONFIG_BCMDHD|CONFIG_BROADCOM_WIFI|CONFIG_CFG80211|CONFIG_WEXT|CONFIG_WIRELESS_EXT" .config || true
             else
               echo ".config not generated yet"
             fi
           } > KernelSU-config.txt
           {
             echo "===== SuSFS build info snapshot ====="
-            echo "workflow=v86-googlepixel-a12-uptime-l68-safe-wifi"
+            echo "workflow=v87-googlepixel-a12-uptime-l68-safe-wifi"
             echo "date=$(date -u)"
             echo "DEVICE=${DEVICE:-unknown}"
             echo "MODEL_NAME=${MODEL_NAME:-unknown}"
@@ -3801,7 +3818,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v86-googlepixel-a12-uptime-l68-safe-wifi
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v87-googlepixel-a12-uptime-l68-safe-wifi
           path: |
             kernel/*.log
             kernel/*.txt
@@ -3875,7 +3892,7 @@ jobs:
               break
             fi
           done
-          grep -E "CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_SUSFS|CONFIG_KSU_KPROBES_HOOK|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS|CONFIG_BCMDHD|CONFIG_BROADCOM_WIFI|CONFIG_CFG80211" .config > "$OUT_DIR/KernelSU-config.txt" || true
+          grep -E "CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_SUSFS|CONFIG_KSU_KPROBES_HOOK|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS|CONFIG_BCMDHD|CONFIG_BROADCOM_WIFI|CONFIG_CFG80211|CONFIG_WEXT|CONFIG_WIRELESS_EXT" .config > "$OUT_DIR/KernelSU-config.txt" || true
 
           echo "===== ARTIFACT TREE ====="
           find "$OUT_DIR" -maxdepth 3 -type f -print -exec ls -lh {} \;
@@ -3889,7 +3906,7 @@ jobs:
           RAW_DIR="$OUT_DIR/raw"
           AK_DIR="$GITHUB_WORKSPACE/AnyKernel3"
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
-          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-GooglePixelA12-${ANDROID_MAJOR_VERSION}-v86-ksu-susfs-up-l68safe-wifi-l69-${SHORT_SHA}.zip"
+          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-GooglePixelA12-${ANDROID_MAJOR_VERSION}-v87-ksu-susfs-up-l68safe-wifi-l70-${SHORT_SHA}.zip"
 
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 "$AK_DIR"
 
@@ -3901,53 +3918,70 @@ jobs:
           cp -av "$RAW_DIR/dtb.img" ./dtb.img
 
           rm -f anykernel.sh
-
-          printf '%s\n' \
-            "### AnyKernel3 Ramdisk Mod Script" \
-            "## Auto-generated for ss-S9" \
-            "## Target: Samsung Galaxy S9 ${MODEL_NAME} / ${DEVICE} / ${ROM_NAME}" \
-            "" \
-            "properties() { '" \
-            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} ${ROM_NAME} v86 KernelSU Next SuSFS Pixel Android 12 uptime L68-safe WiFi-L69" \
-            "do.devicecheck=1" \
-            "do.modules=0" \
-            "do.systemless=1" \
-            "do.cleanup=1" \
-            "do.cleanuponabort=0" \
-            "device.name1=${AK_DEVICE_1}" \
-            "device.name2=${AK_DEVICE_2}" \
-            "device.name3=${AK_DEVICE_3}" \
-            "device.name4=${AK_DEVICE_4}" \
-            "device.name5=${DEVICE}" \
-            "supported.versions=" \
-            "supported.patchlevels=" \
-            "'; }" \
-            "" \
-            "BLOCK=boot" \
-            "for CANDIDATE in \\" \
-            "  /dev/block/platform/11120000.ufs/by-name/BOOT \\" \
-            "  /dev/block/platform/11120000.ufs/by-name/boot \\" \
-            "  /dev/block/bootdevice/by-name/boot \\" \
-            "  /dev/block/by-name/boot" \
-            "do" \
-            '  if [ -e "$CANDIDATE" ]; then' \
-            '    BLOCK="$CANDIDATE"' \
-            "    break" \
-            "  fi" \
-            "done" \
-            "" \
-            "IS_SLOT_DEVICE=0" \
-            "RAMDISK_COMPRESSION=auto" \
-            "PATCH_VBMETA_FLAG=auto" \
-            "" \
-            ". tools/ak3-core.sh" \
-            "" \
-            "dump_boot" \
-            "write_boot" \
-            > anykernel.sh
-
+          
+          cat > anykernel.sh <<EOF_AK
+          ### AnyKernel3 Ramdisk Mod Script
+          ## Auto-generated for ss-S9
+          ## Target: Samsung Galaxy S9 ${MODEL_NAME} / ${DEVICE} / ${ROM_NAME}
+          
+          properties() { '
+          kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} ${ROM_NAME} v87 KernelSU Next SuSFS Pixel Android 12 uptime L68-safe WiFi-L70
+          do.devicecheck=1
+          do.modules=0
+          do.systemless=1
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=${AK_DEVICE_1}
+          device.name2=${AK_DEVICE_2}
+          device.name3=${AK_DEVICE_3}
+          device.name4=${AK_DEVICE_4}
+          device.name5=${DEVICE}
+          supported.versions=
+          supported.patchlevels=
+          '; }
+          
+          BLOCK=boot
+          for CANDIDATE in \
+            /dev/block/platform/11120000.ufs/by-name/BOOT \
+            /dev/block/platform/11120000.ufs/by-name/boot \
+            /dev/block/bootdevice/by-name/boot \
+            /dev/block/by-name/boot
+          do
+            if [ -e "$CANDIDATE" ]; then
+              BLOCK="$CANDIDATE"
+              break
+            fi
+          done
+          
+          IS_SLOT_DEVICE=0
+          RAMDISK_COMPRESSION=auto
+          PATCH_VBMETA_FLAG=auto
+          
+          . tools/ak3-core.sh
+          
+          ui_print "- Pixel A12 WiFi compatibility: vendor aliases"
+          for VENDOR_DIR in /vendor /system/vendor; do
+            if [ -d "$VENDOR_DIR/etc/wifi" ]; then
+              mount -o rw,remount "$VENDOR_DIR" 2>/dev/null || true
+              mount -o rw,remount /vendor 2>/dev/null || true
+              if [ -f "$VENDOR_DIR/etc/wifi/${WIFI_FW_FILE}" ]; then
+                cp -pf "$VENDOR_DIR/etc/wifi/${WIFI_FW_FILE}" "$VENDOR_DIR/etc/wifi/bcmdhd_sta.bin" 2>/dev/null || ln -sf "${WIFI_FW_FILE}" "$VENDOR_DIR/etc/wifi/bcmdhd_sta.bin" 2>/dev/null || true
+                chmod 0644 "$VENDOR_DIR/etc/wifi/bcmdhd_sta.bin" 2>/dev/null || true
+              fi
+              if [ -f "$VENDOR_DIR/etc/wifi/${WIFI_NVRAM_FILE}" ]; then
+                cp -pf "$VENDOR_DIR/etc/wifi/${WIFI_NVRAM_FILE}" "$VENDOR_DIR/etc/wifi/nvram_net.txt" 2>/dev/null || ln -sf "${WIFI_NVRAM_FILE}" "$VENDOR_DIR/etc/wifi/nvram_net.txt" 2>/dev/null || true
+                chmod 0644 "$VENDOR_DIR/etc/wifi/nvram_net.txt" 2>/dev/null || true
+              fi
+              ls -l "$VENDOR_DIR/etc/wifi/bcmdhd_sta.bin" "$VENDOR_DIR/etc/wifi/nvram_net.txt" 2>/dev/null || true
+            fi
+          done
+          
+          dump_boot
+          write_boot
+          EOF_AK
+          
           chmod +x anykernel.sh
-
+          
           echo "===== anykernel.sh ====="
           cat anykernel.sh
 
@@ -3964,15 +3998,15 @@ jobs:
           mkdir -p "$LOG_PACK_DIR"
 
           cat > "$OUT_DIR/README-send-to-chatgpt.txt" <<EOF_README
-          ss-S9 v86 Google Pixel Android 12 build artifact - L68-safe + WiFi L69 fixed vendor path
+          ss-S9 v87 Google Pixel Android 12 build artifact - L68-safe + WiFi L70 vendor aliases + WEXT
 
           Send these files back to ChatGPT when debugging:
-          1. logs-for-chatgpt-${DEVICE}-${MODEL_NAME}-v86.tar.gz
+          1. logs-for-chatgpt-${DEVICE}-${MODEL_NAME}-v87.tar.gz
           2. build.log
           3. defconfig.log
           4. olddefconfig.log
           5. kernel.config
-          6. v86-clock-surface-check.log from your PC after running v86-clock-surface-check.bat
+          6. v87-clock-surface-check.log from your PC after running v87-clock-surface-check.bat
 
           Device: ${DEVICE}
           Model: ${MODEL_NAME}
@@ -3985,9 +4019,9 @@ jobs:
           cp -av "$OUT_DIR"/*.log "$LOG_PACK_DIR"/ 2>/dev/null || true
           cp -av "$OUT_DIR"/*.txt "$LOG_PACK_DIR"/ 2>/dev/null || true
           cp -av "$OUT_DIR"/kernel.config "$LOG_PACK_DIR"/ 2>/dev/null || true
-          cp -av "$OUT_DIR"/v86-clock-* "$LOG_PACK_DIR"/ 2>/dev/null || true
+          cp -av "$OUT_DIR"/v87-clock-* "$LOG_PACK_DIR"/ 2>/dev/null || true
 
-          (cd "$OUT_DIR" && tar -czf "logs-for-chatgpt-${DEVICE}-${MODEL_NAME}-v86.tar.gz" logs-for-chatgpt README-send-to-chatgpt.txt)
+          (cd "$OUT_DIR" && tar -czf "logs-for-chatgpt-${DEVICE}-${MODEL_NAME}-v87.tar.gz" logs-for-chatgpt README-send-to-chatgpt.txt)
           sha256sum "$OUT_DIR"/* 2>/dev/null | tee "$OUT_DIR/SHA256SUMS.txt" || true
 
           echo "===== CHATGPT LOG BUNDLE ====="
@@ -3996,7 +4030,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v86-googlepixel-a12-uptime-l68-safe-wifi
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v87-googlepixel-a12-uptime-l68-safe-wifi
           path: |
             out/*.zip
             out/raw/*
@@ -4004,7 +4038,7 @@ jobs:
             out/README-send-to-chatgpt.txt
             out/SHA256SUMS.txt
             out/*.log
-            out/v86-clock-*
+            out/v87-clock-*
             out/kernel.config
             out/modules-*
             out/KernelSU-*.txt
