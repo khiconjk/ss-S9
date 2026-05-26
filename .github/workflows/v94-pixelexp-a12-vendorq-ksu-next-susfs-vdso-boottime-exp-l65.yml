@@ -1,4 +1,4 @@
-name: v94 S9 PixelExp A12 Vendor-Q KSU SuSFS VDSO BOOTTIME EXP L65
+name: v95 S9 PixelExp A12 Vendor-Q KSU SuSFS VDSO BOOTTIME EXP L66
 
 "on":
   workflow_dispatch:
@@ -193,7 +193,7 @@ jobs:
           echo "Clean done" | tee -a clean.log
 
 
-      - name: Patch kernel release to G960NK v94 PixelExp A12 KSU Next + SuSFS VDSO BOOTTIME EXP L65
+      - name: Patch kernel release to G960NK v95 PixelExp A12 KSU Next + SuSFS VDSO BOOTTIME EXP L66
         shell: bash
         working-directory: kernel
         run: |
@@ -212,9 +212,9 @@ jobs:
           text = re.sub(r"^SUBLEVEL\s*=\s*.*$", "SUBLEVEL = 220", text, flags=re.MULTILINE)
 
           if re.search(r"^EXTRAVERSION\s*=", text, flags=re.MULTILINE):
-              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v94-q-ksu-susfs-vdso", text, flags=re.MULTILINE)
+              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v95-q-ksu-susfs-vdso", text, flags=re.MULTILINE)
           else:
-              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v94-q-ksu-susfs-vdso", 1)
+              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v95-q-ksu-susfs-vdso", 1)
 
           makefile.write_text(text)
           PY
@@ -222,8 +222,8 @@ jobs:
           echo "===== AFTER VERSION PATCH ====="
           grep -nE "^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)[[:space:]]*=" Makefile || true
 
-          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v94-q-ksu-susfs-vdso"
-          RELEASE_LEN=$(printf "%s" "4.9.220-G960NK-v94-q-ksu-susfs-vdso" | wc -c)
+          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v95-q-ksu-susfs-vdso"
+          RELEASE_LEN=$(printf "%s" "4.9.220-G960NK-v95-q-ksu-susfs-vdso" | wc -c)
           echo "UTS_RELEASE length=$RELEASE_LEN / 64"
           if [ "$RELEASE_LEN" -gt 64 ]; then
             echo "ERROR: UTS_RELEASE exceeds Linux 64-character limit"
@@ -1719,7 +1719,7 @@ jobs:
             echo "Device: ${DEVICE}"
             echo "Model: ${MODEL_NAME}"
             echo "Android: ${PLATFORM_VERSION}/${ANDROID_MAJOR_VERSION}"
-            echo "Kernel release target: 4.9.220-G960NK-v94-q-ksu-susfs-vdso"
+            echo "Kernel release target: 4.9.220-G960NK-v95-q-ksu-susfs-vdso"
             echo ""
           } > ksu-next-build-info.txt
 
@@ -1857,15 +1857,15 @@ jobs:
           #define __weak __attribute__((weak))
           #endif
 
-          #ifndef rol65
-          #define rol65(x, n) (((x) << (n)) | ((x) >> (64 - (n))))
+          #ifndef rol66
+          #define rol66(x, n) (((x) << (n)) | ((x) >> (64 - (n))))
           #endif
 
           #define KSU_SIPHASH_ROUND do { \
-              v0 += v1; v1 = rol65(v1, 13); v1 ^= v0; v0 = rol65(v0, 32); \
-              v2 += v3; v3 = rol65(v3, 16); v3 ^= v2; \
-              v0 += v3; v3 = rol65(v3, 21); v3 ^= v0; \
-              v2 += v1; v1 = rol65(v1, 17); v1 ^= v2; v2 = rol65(v2, 32); \
+              v0 += v1; v1 = rol66(v1, 13); v1 ^= v0; v0 = rol66(v0, 32); \
+              v2 += v3; v3 = rol66(v3, 16); v3 ^= v2; \
+              v0 += v3; v3 = rol66(v3, 21); v3 ^= v0; \
+              v2 += v1; v1 = rol66(v1, 17); v1 ^= v2; v2 = rol66(v2, 32); \
           } while (0)
 
           static inline u64 ksu_get_unaligned_le64_l62(const void *p)
@@ -1962,14 +1962,14 @@ jobs:
 
           echo "SipHash weak compat link fix L62 completed" | tee -a "$LOG"
 
-      - name: Apply S9 ghost uptime L65 VDSO BOOTTIME EXP
+      - name: Apply S9 ghost uptime L66 VDSO BOOTTIME EXP
         shell: bash
         working-directory: kernel
         run: |
           set -euo pipefail
-          echo "===== APPLY S9 GHOST UPTIME L65 VDSO BOOTTIME EXP ====="
+          echo "===== APPLY S9 GHOST UPTIME L66 VDSO BOOTTIME EXP ====="
           mkdir -p scripts include/linux kernel
-          cat > scripts/ci_apply_s9_ghost_uptime_timekeeping_exp_l65.py <<'PY'
+          cat > scripts/ci_apply_s9_ghost_uptime_timekeeping_exp_l66.py <<'PY'
           from pathlib import Path
           import re
 
@@ -1981,7 +1981,7 @@ jobs:
           HEADER = ROOT / 'include/linux/ghost_uptime.h'
           MODULE = ROOT / 'kernel/ghost_uptime.c'
           KMAKE = ROOT / 'kernel/Makefile'
-          REPORT = ROOT / 's9-ghost-uptime-l65-report.txt'
+          REPORT = ROOT / 's9-ghost-uptime-l66-report.txt'
 
           def die(msg):
               raise SystemExit('ERROR: ' + msg)
@@ -2029,7 +2029,7 @@ jobs:
 
           write(MODULE, '''// SPDX-License-Identifier: GPL-2.0
           /*
-           * S9/Exynos9810 ghost uptime helper L65 - timekeeping experimental.
+           * S9/Exynos9810 ghost uptime helper L66 - timekeeping experimental.
            *
            * Purpose:
            * - keep v92 Vendor-Q WiFi baseline
@@ -2116,7 +2116,7 @@ jobs:
               ghost_uptime_ready = true;
 
           #ifndef CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
-              pr_info("ghost_uptime_l65_timekeeping_exp: offset_secs=%llu offset_days=%llu\\n",
+              pr_info("ghost_uptime_l66_timekeeping_exp: offset_secs=%llu offset_days=%llu\\n",
                       secs, div64_u64(secs, GHOST_UPTIME_DAY_SECS));
           #endif
           }
@@ -2136,7 +2136,7 @@ jobs:
               ghost_uptime_ready = true;
 
           #ifndef CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
-              pr_info("ghost_uptime_l65_lazy: offset_secs=%llu offset_days=%llu\\n",
+              pr_info("ghost_uptime_l66_lazy: offset_secs=%llu offset_days=%llu\\n",
                       secs, div64_u64(secs, GHOST_UPTIME_DAY_SECS));
           #endif
           }
@@ -2200,14 +2200,14 @@ jobs:
           ''')
           report.append('wrote include/linux/ghost_uptime.h')
           report.append('wrote kernel/ghost_uptime.c')
-          report.append('mode=L65 VDSO boottime experimental: patch timekeeping_init boot source + VDSO btm data')
+          report.append('mode=L66 VDSO boottime experimental: patch timekeeping_init boot source + VDSO btm data')
           report.append('still skipped: posix CLOCK_BOOTTIME syscall hook and fs/stat timestamp hook; VDSO btm data is patched')
           report.append('compile fix kept: include <linux/ktime.h> before <linux/timekeeping.h> for Android Q vendor build')
 
           km = read(KMAKE)
           km = re.sub(r'(?m)^obj-y\s*\+=\s*ghost_uptime\.o\s*\n', '', km)
-          marker = '# S9_GHOST_UPTIME_L65_TIMEKEEPING_EXP_LINK_OBJECT\nobj-y += ghost_uptime.o\n'
-          if 'S9_GHOST_UPTIME_L65_TIMEKEEPING_EXP_LINK_OBJECT' not in km:
+          marker = '# S9_GHOST_UPTIME_L66_TIMEKEEPING_EXP_LINK_OBJECT\nobj-y += ghost_uptime.o\n'
+          if 'S9_GHOST_UPTIME_L66_TIMEKEEPING_EXP_LINK_OBJECT' not in km:
               km = km.rstrip() + '\n\n' + marker
               write(KMAKE, km)
               report.append('kernel/Makefile appended obj-y += ghost_uptime.o at bottom')
@@ -2257,8 +2257,8 @@ jobs:
           sysc = re.sub(r'\n\s*/\* S9_GHOST_UPTIME_SYSINFO_PROTO_L6[0-9] \*/\s*\n\s*extern\s+void\s+ghost_uptime_apply_sysinfo\s*\(\s*struct\s+sysinfo\s*\*\s*info\s*\)\s*;\s*', '\n', sysc)
           sysc = re.sub(r'\n\s*extern\s+void\s+ghost_uptime_apply_sysinfo\s*\(\s*struct\s+sysinfo\s*\*\s*info\s*\)\s*;\s*\n\s*ghost_uptime_apply_sysinfo\s*\(\s*info\s*\)\s*;', '\n\tghost_uptime_apply_sysinfo(info);', sysc)
           sysc = re.sub(r'\n\s*extern\s+void\s+ghost_uptime_apply_sysinfo\s*\(\s*struct\s+sysinfo\s*\*\s*info\s*\)\s*;\s*', '\n', sysc)
-          proto = '\n/* S9_GHOST_UPTIME_SYSINFO_PROTO_L65 */\nextern void ghost_uptime_apply_sysinfo(struct sysinfo *info);\n'
-          if 'S9_GHOST_UPTIME_SYSINFO_PROTO_L65' not in sysc:
+          proto = '\n/* S9_GHOST_UPTIME_SYSINFO_PROTO_L66 */\nextern void ghost_uptime_apply_sysinfo(struct sysinfo *info);\n'
+          if 'S9_GHOST_UPTIME_SYSINFO_PROTO_L66' not in sysc:
               anchor = '#include <linux/syscalls.h>'
               if anchor in sysc:
                   sysc = sysc.replace(anchor, anchor + proto, 1)
@@ -2291,32 +2291,32 @@ jobs:
           REPORT.write_text('\n'.join(report) + '\n')
           print(REPORT.read_text())
           PY
-          python3 scripts/ci_apply_s9_ghost_uptime_timekeeping_exp_l65.py
+          python3 scripts/ci_apply_s9_ghost_uptime_timekeeping_exp_l66.py
 
-          echo "===== VERIFY S9 GHOST UPTIME L65 VDSO BOOTTIME EXP ====="
-          grep -RniE "ghost_uptime_apply_boot_time|ghost_uptime_apply_proc_uptime_pair|ghost_uptime_apply_sysinfo|ghost_uptime_apply_proc_btime64|ghost_uptime_offset_ns|ghost_uptime_l65|ghost_uptime_apply_stat|ghost_uptime_apply_boottime_ts|get_fake_boottime|arch_sys_boot_offset|return[[:space:]]+delta[[:space:]]*\\+" \
+          echo "===== VERIFY S9 GHOST UPTIME L66 VDSO BOOTTIME EXP ====="
+          grep -RniE "ghost_uptime_apply_boot_time|ghost_uptime_apply_proc_uptime_pair|ghost_uptime_apply_sysinfo|ghost_uptime_apply_proc_btime64|ghost_uptime_offset_ns|ghost_uptime_l66|ghost_uptime_apply_stat|ghost_uptime_apply_boottime_ts|get_fake_boottime|arch_sys_boot_offset|return[[:space:]]+delta[[:space:]]*\\+" \
             kernel/time/timekeeping.c fs/proc/uptime.c fs/proc/stat.c kernel/sys.c include/linux/ghost_uptime.h kernel/ghost_uptime.c kernel/Makefile fs/stat.c 2>/dev/null || true
           if grep -RniE "ghost_uptime_apply_stat|ghost_uptime_apply_boottime_ts|ghost_uptime_apply_boottime_ts64|get_fake_boottime|arch_sys_boot_offset|return[[:space:]]+delta[[:space:]]*\\+" \
             include/linux/ghost_uptime.h kernel/ghost_uptime.c kernel/time/timekeeping.c fs/stat.c kernel/time/posix-timers.c kernel/time/posix-stubs.c 2>/dev/null; then
-            echo "ERROR: unsafe stat/boottime hook pattern exists in v94 timekeeping-only mode"
+            echo "ERROR: unsafe stat/boottime hook pattern exists in v95 timekeeping-only mode"
             exit 1
           fi
-          grep -q "S9_GHOST_UPTIME_L65_TIMEKEEPING_EXP_LINK_OBJECT" kernel/Makefile
+          grep -q "S9_GHOST_UPTIME_L66_TIMEKEEPING_EXP_LINK_OBJECT" kernel/Makefile
           grep -q "ghost_uptime_apply_boot_time(&boot, now.tv_sec);" kernel/time/timekeeping.c
           grep -q "ghost_uptime_apply_proc_uptime_pair(&uptime, &idle);" fs/proc/uptime.c
           grep -q "ghost_uptime_apply_sysinfo(info);" kernel/sys.c
-          grep -q "S9_GHOST_UPTIME_SYSINFO_PROTO_L65" kernel/sys.c
+          grep -q "S9_GHOST_UPTIME_SYSINFO_PROTO_L66" kernel/sys.c
           grep -q "ghost_uptime_apply_proc_btime64(&boottime);" fs/proc/stat.c
-          cp -f s9-ghost-uptime-l65-report.txt ../s9-ghost-uptime-l65-report.txt
-          cp -f s9-ghost-uptime-l65-report.txt ../s9-ghost-uptime-l62-report.txt
+          cp -f s9-ghost-uptime-l66-report.txt ../s9-ghost-uptime-l66-report.txt
+          cp -f s9-ghost-uptime-l66-report.txt ../s9-ghost-uptime-l62-report.txt
 
-      - name: Patch VDSO CLOCK_BOOTTIME data EXP L65
+      - name: Patch VDSO CLOCK_BOOTTIME data EXP L66
         shell: bash
         working-directory: kernel
         run: |
           set -euo pipefail
-          echo "===== PATCH VDSO CLOCK_BOOTTIME DATA EXP L65 ====="
-          cat > scripts/ci_patch_s9_vdso_boottime_l65.py <<'PY'
+          echo "===== PATCH VDSO CLOCK_BOOTTIME DATA EXP L66 ====="
+          cat > scripts/ci_patch_s9_vdso_boottime_l66.py <<'PY'
           from pathlib import Path
           import re
 
@@ -2338,7 +2338,7 @@ jobs:
           def add_include_once(data, include_line):
               if include_line in data:
                   return data
-              matches = list(re.finditer(r'#include\s+<[^>]+>', data))
+              matches = list(re.finditer(r'^#include\s+<[^>]+>\s*$', data, flags=re.M))
               if not matches:
                   die(f'no include anchor for {include_line}')
               m = matches[-1]
@@ -2354,49 +2354,61 @@ jobs:
               r'\n\s*/\* S9_GHOST_UPTIME_VDSO_BTM_L6[0-9]_START \*/.*?/\* S9_GHOST_UPTIME_VDSO_BTM_L6[0-9]_END \*/\s*',
               '\n', txt, flags=re.S)
 
-          anchor = 'struct timespec btm = ktime_to_timespec(tk->offs_boot);'
-          if anchor not in txt:
-              die('cannot find VDSO btm anchor in arch/arm64/kernel/vdso.c')
+          # Match both spacing styles seen in Samsung 4.9 trees:
+          #   struct timespec btm = ktime_to_timespec(tk->offs_boot);
+          #   struct timespec btm=ktime_to_timespec(tk->offs_boot);
+          anchor_re = re.compile(r'(\n\s*struct\s+timespec\s+btm\s*=\s*ktime_to_timespec\s*\(\s*tk->offs_boot\s*\)\s*;)')
+          if not anchor_re.search(txt):
+              die('cannot find flexible VDSO btm anchor in arch/arm64/kernel/vdso.c')
 
-          block = ('struct timespec btm = ktime_to_timespec(tk->offs_boot);\n'
-                   '\t\t/* S9_GHOST_UPTIME_VDSO_BTM_L65_START */\n'
-                   '\t\t{\n'
-                   '\t\t\tu64 ghost_off_sec = div64_u64(ghost_uptime_get_offset_ns(), NSEC_PER_SEC);\n'
-                   '\t\t\tif (ghost_off_sec)\n'
-                   '\t\t\t\tbtm.tv_sec += (time_t)ghost_off_sec;\n'
-                   '\t\t}\n'
-                   '\t\t/* S9_GHOST_UPTIME_VDSO_BTM_L65_END */')
-          txt = txt.replace(anchor, block, 1)
+          def inject(match):
+              line = match.group(1)
+              indent = re.match(r'\n(\s*)', line).group(1)
+              return (
+                  line + '\n'
+                  + indent + '/* S9_GHOST_UPTIME_VDSO_BTM_L66_START */\n'
+                  + indent + '{\n'
+                  + indent + '\tu64 ghost_off_sec = div64_u64(ghost_uptime_get_offset_ns(), NSEC_PER_SEC);\n'
+                  + indent + '\tif (ghost_off_sec)\n'
+                  + indent + '\t\tbtm.tv_sec += (time_t)ghost_off_sec;\n'
+                  + indent + '}\n'
+                  + indent + '/* S9_GHOST_UPTIME_VDSO_BTM_L66_END */')
 
-          if txt.count('S9_GHOST_UPTIME_VDSO_BTM_L65_START') != 1:
+          txt = anchor_re.sub(inject, txt, count=1)
+
+          if txt.count('S9_GHOST_UPTIME_VDSO_BTM_L66_START') != 1:
               die('VDSO ghost btm marker count is not exactly 1')
           if 'ghost_uptime_get_offset_ns()' not in txt:
               die('ghost_uptime_get_offset_ns missing from vdso.c')
-          if 'vdso_data->btm_sec = btm.tv_sec;' not in txt:
+          # Do not require one exact formatting style here. Samsung trees often align with tabs.
+          if not re.search(r'vdso_data->btm_sec\s*=\s*btm\.tv_sec\s*;', txt):
               die('cannot verify vdso_data->btm_sec assignment remains')
+          if not re.search(r'vdso_data->btm_nsec\s*=\s*btm\.tv_nsec\s*;', txt):
+              die('cannot verify vdso_data->btm_nsec assignment remains')
 
           write(VDSO, txt)
           report = []
-          report.append('v94 VDSO boottime experimental mode: timekeeping_init boot source remains shifted from v93.')
-          report.append('New: arch/arm64/kernel/vdso.c update_vsyscall adds ghost offset to btm before vdso_data->btm_sec/btm_nsec.')
+          report.append('v95 VDSO boottime experimental mode: fixed v94 early failure by using flexible VDSO anchors and flexible btm_sec verification.')
+          report.append('New/kept: arch/arm64/kernel/vdso.c update_vsyscall adds ghost offset to btm before vdso_data->btm_sec/btm_nsec.')
           report.append('Reason: Android elapsedRealtime uses CLOCK_BOOTTIME via arm64 VDSO fast path; v93 timekeeping alone left nowELAPSED real.')
           report.append('Still skipped: POSIX syscall fallback hook, posix-stubs hook, and fs/stat timestamp hook.')
           report.append(f'vdso.c changed={txt != orig}')
           REPORT.write_text('\n'.join(report) + '\n')
           print(REPORT.read_text())
           PY
-          python3 scripts/ci_patch_s9_vdso_boottime_l65.py
+          python3 scripts/ci_patch_s9_vdso_boottime_l66.py
 
-          echo "===== VERIFY VDSO CLOCK_BOOTTIME DATA EXP L65 ====="
+          echo "===== VERIFY VDSO CLOCK_BOOTTIME DATA EXP L66 ====="
           cat s9-boottime-surface-l62-report.txt
-          grep -RniE "S9_GHOST_UPTIME_VDSO_BTM_L65|ghost_uptime_get_offset_ns|vdso_data->btm_sec|struct timespec btm" \
+          grep -RniE "S9_GHOST_UPTIME_VDSO_BTM_L66|ghost_uptime_get_offset_ns|vdso_data->btm_sec|struct timespec btm" \
             arch/arm64/kernel/vdso.c 2>/dev/null || true
           grep -RniE "ghost_uptime_apply_boot_time|CLOCK_BOOTTIME|get_monotonic_boottime|ktime_get_boottime" \
             kernel/time/timekeeping.c kernel/time/posix-timers.c kernel/time/posix-stubs.c arch/arm64/kernel/vdso.c 2>/dev/null || true
           cp -f s9-boottime-surface-l62-report.txt ../s9-boottime-surface-l62-report.txt
 
           echo "===== VDSO BOOTTIME EXPERIMENT MODE =====" | tee s9-wifi-safe-l62-report.txt
-          echo "v94 keeps v93 timekeeping shift and additionally patches arm64 VDSO btm data for CLOCK_BOOTTIME." | tee -a s9-wifi-safe-l62-report.txt
+          echo "v95 keeps v93 timekeeping shift and additionally patches arm64 VDSO btm data for CLOCK_BOOTTIME." | tee -a s9-wifi-safe-l62-report.txt
+          echo "v95 fixes v94's pre-defconfig failure by using flexible anchor/assignment matching in vdso.c." | tee -a s9-wifi-safe-l62-report.txt
           echo "POSIX fallback and fs/stat timestamp hooks remain disabled to isolate VDSO impact on WiFi and nowELAPSED." | tee -a s9-wifi-safe-l62-report.txt
           echo "If WiFi breaks, rollback to v92 stable or v93 timekeeping-only." | tee -a s9-wifi-safe-l62-report.txt
           cp -f s9-wifi-safe-l62-report.txt ../s9-wifi-safe-l62-report.txt
@@ -2644,7 +2656,7 @@ jobs:
           ls -lah arch/arm64/boot || true
           find arch/arm64/boot -maxdepth 8 -type f \( -name "Image*" -o -name "*.dtb" -o -name "dtb.img" -o -name "*.ko" \) -print -exec ls -lh {} \; || true
 
-      - name: Build v94 clock and WiFi diagnostic probe
+      - name: Build v95 clock and WiFi diagnostic probe
         shell: bash
         working-directory: kernel
         run: |
@@ -2653,7 +2665,7 @@ jobs:
           OUT_DIR="$GITHUB_WORKSPACE/out"
           mkdir -p "$OUT_DIR"
 
-          cat > "$OUT_DIR/v94-clock-probe.c" <<'EOF_CPROBE'
+          cat > "$OUT_DIR/v95-clock-probe.c" <<'EOF_CPROBE'
           #define _GNU_SOURCE
           #include <errno.h>
           #include <stdio.h>
@@ -2697,7 +2709,7 @@ jobs:
           }
 
           int main(void) {
-              printf("===== V94 native clock surface probe =====\n");
+              printf("===== V95 native clock surface probe =====\n");
               printf("pid=%ld uid=%ld\n", (long)getpid(), (long)getuid());
               printf("CLOCK ids: REALTIME=%d MONOTONIC=%d MONOTONIC_RAW=%d BOOTTIME=%d\n",
                      CLOCK_REALTIME, CLOCK_MONOTONIC, CLOCK_MONOTONIC_RAW, CLOCK_BOOTTIME);
@@ -2740,33 +2752,33 @@ jobs:
           }
           EOF_CPROBE
 
-          sed -i 's/^          //' "$OUT_DIR/v94-clock-probe.c"
+          sed -i 's/^          //' "$OUT_DIR/v95-clock-probe.c"
 
-          echo "===== BUILD ARM64 CLOCK PROBE V94 ====="
-          PROBE_LOG="$OUT_DIR/v94-clock-probe-build.log"
+          echo "===== BUILD ARM64 CLOCK PROBE V95 ====="
+          PROBE_LOG="$OUT_DIR/v95-clock-probe-build.log"
           : > "$PROBE_LOG"
           set +e
-          aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v94-clock-probe.c" -o "$OUT_DIR/v94-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
+          aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v95-clock-probe.c" -o "$OUT_DIR/v95-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
           RC=$?
           if [ "$RC" -ne 0 ]; then
-            aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v94-clock-probe.c" -o "$OUT_DIR/v94-clock-probe-arm64" >> "$PROBE_LOG" 2>&1
+            aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v95-clock-probe.c" -o "$OUT_DIR/v95-clock-probe-arm64" >> "$PROBE_LOG" 2>&1
             RC=$?
           fi
           set -e
-          if [ "$RC" -eq 0 ] && [ -s "$OUT_DIR/v94-clock-probe-arm64" ]; then
-            file "$OUT_DIR/v94-clock-probe-arm64" | tee -a "$PROBE_LOG"
-            chmod +x "$OUT_DIR/v94-clock-probe-arm64"
+          if [ "$RC" -eq 0 ] && [ -s "$OUT_DIR/v95-clock-probe-arm64" ]; then
+            file "$OUT_DIR/v95-clock-probe-arm64" | tee -a "$PROBE_LOG"
+            chmod +x "$OUT_DIR/v95-clock-probe-arm64"
           else
             echo "[WARN] native clock probe build failed; shell diagnostic still works" | tee -a "$PROBE_LOG"
-            cat > "$OUT_DIR/v94-clock-probe-arm64.README.txt" <<'EOF_README'
+            cat > "$OUT_DIR/v95-clock-probe-arm64.README.txt" <<'EOF_README'
           Native clock probe did not compile on the runner.
-          Use v94-clock-surface-check.bat for shell/proc/dumpsys/WiFi checks.
+          Use v95-clock-surface-check.bat for shell/proc/dumpsys/WiFi checks.
           EOF_README
           fi
 
-          cat > "$OUT_DIR/v94-clock-surface-check-device.sh" <<'EOF_SH'
+          cat > "$OUT_DIR/v95-clock-surface-check-device.sh" <<'EOF_SH'
           #!/system/bin/sh
-          echo "===== V94 CLOCK/WIFI SURFACE CHECK DEVICE SH ====="
+          echo "===== V95 CLOCK/WIFI SURFACE CHECK DEVICE SH ====="
           echo "-- identity/kernel --"
           id
           uname -a
@@ -2792,10 +2804,10 @@ jobs:
           dumpsys alarm | grep -iE 'nowRTC|nowELAPSED|RuntimeStarted|Runtime uptime' || true
 
           echo "-- native clock probe --"
-          if [ -x /data/local/tmp/v94-clock-probe ]; then
-            /data/local/tmp/v94-clock-probe
+          if [ -x /data/local/tmp/v95-clock-probe ]; then
+            /data/local/tmp/v95-clock-probe
           else
-            echo "Missing /data/local/tmp/v94-clock-probe"
+            echo "Missing /data/local/tmp/v95-clock-probe"
           fi
 
           echo "-- WiFi service toggle --"
@@ -2847,19 +2859,19 @@ jobs:
           echo "-- dmesg WiFi/KernelSU recent --"
           dmesg 2>/dev/null | grep -iE 'ghost_uptime|ksud|KernelSU|dhd|bcmdhd|wifi|wlan|firmware|nvram|clm|cfg80211|denied|avc' | tail -260 || true
           EOF_SH
-          sed -i 's/^          //' "$OUT_DIR/v94-clock-surface-check-device.sh"
-          chmod +x "$OUT_DIR/v94-clock-surface-check-device.sh"
+          sed -i 's/^          //' "$OUT_DIR/v95-clock-surface-check-device.sh"
+          chmod +x "$OUT_DIR/v95-clock-surface-check-device.sh"
 
-          cat > "$OUT_DIR/v94-clock-surface-check.bat" <<'EOF_BAT'
+          cat > "$OUT_DIR/v95-clock-surface-check.bat" <<'EOF_BAT'
           @echo off
           setlocal EnableExtensions EnableDelayedExpansion
           set ADB=adb
           if exist "D:\platform-tools\adb.exe" set ADB=D:\platform-tools\adb.exe
-          set BIN=%~dp0v94-clock-probe-arm64
-          set DEVSH=%~dp0v94-clock-surface-check-device.sh
-          set LOG=%~dp0v94-clock-surface-check.log
+          set BIN=%~dp0v95-clock-probe-arm64
+          set DEVSH=%~dp0v95-clock-surface-check-device.sh
+          set LOG=%~dp0v95-clock-surface-check.log
 
-          echo ===== V94 CLOCK/WIFI SURFACE CHECK ===== > "%LOG%"
+          echo ===== V95 CLOCK/WIFI SURFACE CHECK ===== > "%LOG%"
           echo Generated at: %DATE% %TIME% >> "%LOG%"
           echo ADB: %ADB% >> "%LOG%"
           echo. >> "%LOG%"
@@ -2869,16 +2881,16 @@ jobs:
           echo. >> "%LOG%"
 
           if exist "%BIN%" (
-            "%ADB%" push "%BIN%" /data/local/tmp/v94-clock-probe >> "%LOG%" 2>&1
-            "%ADB%" shell "chmod 755 /data/local/tmp/v94-clock-probe" >> "%LOG%" 2>&1
+            "%ADB%" push "%BIN%" /data/local/tmp/v95-clock-probe >> "%LOG%" 2>&1
+            "%ADB%" shell "chmod 755 /data/local/tmp/v95-clock-probe" >> "%LOG%" 2>&1
           ) else (
             echo WARN: Missing native probe binary: %BIN% >> "%LOG%"
           )
 
           echo ===== PUSH/RUN DEVICE DIAGNOSTIC SCRIPT ===== >> "%LOG%"
-          "%ADB%" push "%DEVSH%" /data/local/tmp/v94-clock-surface-check-device.sh >> "%LOG%" 2>&1
-          "%ADB%" shell "chmod 755 /data/local/tmp/v94-clock-surface-check-device.sh" >> "%LOG%" 2>&1
-          "%ADB%" shell "su -c /data/local/tmp/v94-clock-surface-check-device.sh" >> "%LOG%" 2>&1
+          "%ADB%" push "%DEVSH%" /data/local/tmp/v95-clock-surface-check-device.sh >> "%LOG%" 2>&1
+          "%ADB%" shell "chmod 755 /data/local/tmp/v95-clock-surface-check-device.sh" >> "%LOG%" 2>&1
+          "%ADB%" shell "su -c /data/local/tmp/v95-clock-surface-check-device.sh" >> "%LOG%" 2>&1
           echo. >> "%LOG%"
 
           type "%LOG%"
@@ -2887,9 +2899,9 @@ jobs:
           endlocal
           EOF_BAT
 
-          sed -i 's/^          //' "$OUT_DIR/v94-clock-surface-check.bat"
+          sed -i 's/^          //' "$OUT_DIR/v95-clock-surface-check.bat"
 
-          ls -lh "$OUT_DIR"/v94-clock-*
+          ls -lh "$OUT_DIR"/v95-clock-*
 
       - name: Show useful errors
         if: failure()
@@ -2926,7 +2938,7 @@ jobs:
           } > KernelSU-config.txt
           {
             echo "===== SuSFS build info snapshot ====="
-            echo "workflow=v94-q-ksu-susfs-vdsoexp-l65"
+            echo "workflow=v95-q-ksu-susfs-vdsoexp-l66"
             echo "date=$(date -u)"
             echo "DEVICE=${DEVICE:-unknown}"
             echo "MODEL_NAME=${MODEL_NAME:-unknown}"
@@ -2941,9 +2953,9 @@ jobs:
           } > SuSFS-build-info.txt
           ls -lah build.log KernelSU-config.txt SuSFS-build-info.txt || true
           {
-            echo "===== CHATGPT READABLE FAILURE LOG V94 ====="
+            echo "===== CHATGPT READABLE FAILURE LOG V95 ====="
             echo "date_utc=$(date -u)"
-            echo "workflow=v94-q-ksu-susfs-vdsoexp-l65"
+            echo "workflow=v95-q-ksu-susfs-vdsoexp-l66"
             echo "repo=${GITHUB_REPOSITORY:-unknown}"
             echo "ref_to_build=${{ inputs.ref_to_build }}"
             echo "device=${DEVICE:-unknown}"
@@ -2961,18 +2973,18 @@ jobs:
             cat KernelSU-config.txt 2>/dev/null || true
             echo
             echo "===== UPTIME/SUSFS REPORTS ====="
-            cat s9-ghost-uptime-l65-report.txt 2>/dev/null || true
+            cat s9-ghost-uptime-l66-report.txt 2>/dev/null || true
               cat s9-ghost-uptime-l62-report.txt 2>/dev/null || true
             cat s9-boottime-surface-l62-report.txt 2>/dev/null || true
             cat s9-wifi-safe-l62-report.txt 2>/dev/null || true
-          } > ChatGPT-readable-build-log-v94.txt
-          ls -lah ChatGPT-readable-build-log-v94.txt || true
+          } > ChatGPT-readable-build-log-v95.txt
+          ls -lah ChatGPT-readable-build-log-v95.txt || true
 
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v94-q-ksu-susfs-vdsoexp-l65
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v95-q-ksu-susfs-vdsoexp-l66
           path: |
             kernel/*.log
             kernel/*.txt
@@ -3058,7 +3070,7 @@ jobs:
           RAW_DIR="$OUT_DIR/raw"
           AK_DIR="$GITHUB_WORKSPACE/AnyKernel3"
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
-          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-PixelExp-A12-VendorQ-v94-q-ksu-susfs-vdsoexp-l65-${SHORT_SHA}.zip"
+          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-PixelExp-A12-VendorQ-v95-q-ksu-susfs-vdsoexp-l66-${SHORT_SHA}.zip"
 
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 "$AK_DIR"
 
@@ -3077,7 +3089,7 @@ jobs:
             "## Target: Samsung Galaxy S9 ${MODEL_NAME} / ${DEVICE} / Pixel Experience Android 12 with Samsung Q vendor blobs" \
             "" \
             "properties() { '" \
-            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} PixelExp Android12 VendorQ v94 KernelSU Next SuSFS VDSOBoottimeEXP GhostUptime L65" \
+            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} PixelExp Android12 VendorQ v95 KernelSU Next SuSFS VDSOBoottimeEXP GhostUptime L66" \
             "do.devicecheck=1" \
             "do.modules=0" \
             "do.systemless=1" \
@@ -3130,13 +3142,13 @@ jobs:
           set +e
           OUT_DIR="$GITHUB_WORKSPACE/out"
           KERNEL_DIR="$GITHUB_WORKSPACE/kernel"
-          LOG="$OUT_DIR/chatgpt-readable-build-log-v94.txt"
+          LOG="$OUT_DIR/chatgpt-readable-build-log-v95.txt"
           mkdir -p "$OUT_DIR"
 
           {
-            echo "===== CHATGPT READABLE BUILD LOG V94 ====="
+            echo "===== CHATGPT READABLE BUILD LOG V95 ====="
             echo "date_utc=$(date -u)"
-            echo "workflow=v94-q-ksu-susfs-vdsoexp-l65"
+            echo "workflow=v95-q-ksu-susfs-vdsoexp-l66"
             echo "repo=${GITHUB_REPOSITORY:-unknown}"
             echo "run=${GITHUB_RUN_ID:-unknown} attempt=${GITHUB_RUN_ATTEMPT:-unknown}"
             echo "sha=${GITHUB_SHA:-unknown}"
@@ -3155,7 +3167,7 @@ jobs:
               grep -E "CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_SUSFS|CONFIG_KSU_KPROBES_HOOK|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS|CONFIG_ANDROID" .config 2>/dev/null || true
               echo
               echo "===== GHOST UPTIME REPORT ====="
-              cat s9-ghost-uptime-l65-report.txt 2>/dev/null || true
+              cat s9-ghost-uptime-l66-report.txt 2>/dev/null || true
               cat s9-ghost-uptime-l62-report.txt 2>/dev/null || true
               echo
               echo "===== BOOTTIME/WIFI SAFE REPORT ====="
@@ -3183,13 +3195,13 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v94-q-ksu-susfs-vdsoexp-l65
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v95-q-ksu-susfs-vdsoexp-l66
           path: |
             out/*.zip
             out/raw/*
             out/*.log
-            out/chatgpt-readable-build-log-v94.txt
-            out/v94-clock-*
+            out/chatgpt-readable-build-log-v95.txt
+            out/v95-clock-*
             out/kernel.config
             out/modules-*
             out/KernelSU-*.txt
