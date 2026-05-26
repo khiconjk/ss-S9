@@ -1,4 +1,4 @@
-name: v91 S9 PixelExp A12 Vendor-Q KSU SuSFS WiFi Recovery L62
+name: v92 S9 PixelExp A12 Vendor-Q KSU SuSFS WiFi Recovery L63 KtimeFix
 
 "on":
   workflow_dispatch:
@@ -193,7 +193,7 @@ jobs:
           echo "Clean done" | tee -a clean.log
 
 
-      - name: Patch kernel release to G960NK v91 PixelExp A12 KSU Next + SuSFS WiFi Safe Stable L62
+      - name: Patch kernel release to G960NK v92 PixelExp A12 KSU Next + SuSFS WiFi Safe Stable L62
         shell: bash
         working-directory: kernel
         run: |
@@ -212,9 +212,9 @@ jobs:
           text = re.sub(r"^SUBLEVEL\s*=\s*.*$", "SUBLEVEL = 220", text, flags=re.MULTILINE)
 
           if re.search(r"^EXTRAVERSION\s*=", text, flags=re.MULTILINE):
-              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v91-q-ksu-susfs-l62", text, flags=re.MULTILINE)
+              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v92-q-ksu-susfs-l63", text, flags=re.MULTILINE)
           else:
-              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v91-q-ksu-susfs-l62", 1)
+              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v92-q-ksu-susfs-l63", 1)
 
           makefile.write_text(text)
           PY
@@ -222,8 +222,8 @@ jobs:
           echo "===== AFTER VERSION PATCH ====="
           grep -nE "^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)[[:space:]]*=" Makefile || true
 
-          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v91-q-ksu-susfs-l62"
-          RELEASE_LEN=$(printf "%s" "4.9.220-G960NK-v91-q-ksu-susfs-l62" | wc -c)
+          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v92-q-ksu-susfs-l63"
+          RELEASE_LEN=$(printf "%s" "4.9.220-G960NK-v92-q-ksu-susfs-l63" | wc -c)
           echo "UTS_RELEASE length=$RELEASE_LEN / 64"
           if [ "$RELEASE_LEN" -gt 64 ]; then
             echo "ERROR: UTS_RELEASE exceeds Linux 64-character limit"
@@ -1719,7 +1719,7 @@ jobs:
             echo "Device: ${DEVICE}"
             echo "Model: ${MODEL_NAME}"
             echo "Android: ${PLATFORM_VERSION}/${ANDROID_MAJOR_VERSION}"
-            echo "Kernel release target: 4.9.220-G960NK-v91-q-ksu-susfs-l62"
+            echo "Kernel release target: 4.9.220-G960NK-v92-q-ksu-susfs-l63"
             echo ""
           } > ksu-next-build-info.txt
 
@@ -2048,6 +2048,7 @@ jobs:
           #include <linux/printk.h>
           #include <linux/time.h>
           #include <linux/time64.h>
+          #include <linux/ktime.h>
           #include <linux/timekeeping.h>
           #include <linux/types.h>
 
@@ -2177,6 +2178,7 @@ jobs:
           report.append('wrote include/linux/ghost_uptime.h')
           report.append('wrote kernel/ghost_uptime.c')
           report.append('mode=L63 proc/sysinfo only, no timekeeping/stat/boottime hooks')
+          report.append('compile fix: include <linux/ktime.h> before <linux/timekeeping.h> for Android Q vendor build')
 
           km = read(KMAKE)
           km = re.sub(r'(?m)^obj-y\s*\+=\s*ghost_uptime\.o\s*\n', '', km)
@@ -2248,7 +2250,7 @@ jobs:
             fs/proc/uptime.c fs/proc/stat.c kernel/sys.c include/linux/ghost_uptime.h kernel/ghost_uptime.c kernel/Makefile kernel/time/timekeeping.c fs/stat.c 2>/dev/null || true
           if grep -RniE "ghost_uptime_apply_boot_time|ghost_uptime_apply_stat|ghost_uptime_apply_boottime_ts|ghost_uptime_apply_boottime_ts64|get_fake_boottime|arch_sys_boot_offset|return[[:space:]]+delta[[:space:]]*\\+" \
             include/linux/ghost_uptime.h kernel/ghost_uptime.c kernel/time/timekeeping.c fs/stat.c 2>/dev/null; then
-            echo "ERROR: unsafe timekeeping/stat/boottime hook pattern exists in v91 proc-only mode"
+            echo "ERROR: unsafe timekeeping/stat/boottime hook pattern exists in v92 proc-only mode"
             exit 1
           fi
           grep -q "S9_GHOST_UPTIME_L63_PROC_ONLY_LINK_OBJECT" kernel/Makefile
@@ -2266,7 +2268,7 @@ jobs:
           set -euo pipefail
           echo "===== DISABLE CLOCK_BOOTTIME USER SURFACE PATCH FOR WIFI RECOVERY L62 ====="
           cat > s9-boottime-surface-l62-report.txt <<'EOF'
-          v91 WiFi recovery mode: CLOCK_BOOTTIME user-surface patch is fully skipped.
+          v92 WiFi recovery mode: CLOCK_BOOTTIME user-surface patch is fully skipped.
           No posix_get_boottime hook, no posix-stubs hook, no ghost_uptime_apply_boottime_ts symbols.
           No timekeeping_init boot_time shift and no generic_fillattr/stat timestamp patch.
           Vendor mode is Android Q/10 even though system ROM is Android 12, because S9 Pixel Experience uses Samsung Q vendor blobs.
@@ -2284,7 +2286,7 @@ jobs:
           cp -f s9-boottime-surface-l62-report.txt ../s9-boottime-surface-l62-report.txt
 
           echo "===== WIFI RECOVERY MODE =====" | tee s9-wifi-safe-l62-report.txt
-          echo "v91 disables every CLOCK_BOOTTIME/timekeeping/stat timestamp hook; only proc/sysinfo uptime ghosting remains." | tee -a s9-wifi-safe-l62-report.txt
+          echo "v92 disables every CLOCK_BOOTTIME/timekeeping/stat timestamp hook; only proc/sysinfo uptime ghosting remains." | tee -a s9-wifi-safe-l62-report.txt
           echo "This is a WiFi-first Vendor-Q rollback while keeping KernelSU Next + SuSFS." | tee -a s9-wifi-safe-l62-report.txt
           cp -f s9-wifi-safe-l62-report.txt ../s9-wifi-safe-l62-report.txt
 
@@ -2531,7 +2533,7 @@ jobs:
           ls -lah arch/arm64/boot || true
           find arch/arm64/boot -maxdepth 8 -type f \( -name "Image*" -o -name "*.dtb" -o -name "dtb.img" -o -name "*.ko" \) -print -exec ls -lh {} \; || true
 
-      - name: Build v91 clock and WiFi diagnostic probe
+      - name: Build v92 clock and WiFi diagnostic probe
         shell: bash
         working-directory: kernel
         run: |
@@ -2540,7 +2542,7 @@ jobs:
           OUT_DIR="$GITHUB_WORKSPACE/out"
           mkdir -p "$OUT_DIR"
 
-          cat > "$OUT_DIR/v91-clock-probe.c" <<'EOF_CPROBE'
+          cat > "$OUT_DIR/v92-clock-probe.c" <<'EOF_CPROBE'
           #define _GNU_SOURCE
           #include <errno.h>
           #include <stdio.h>
@@ -2584,7 +2586,7 @@ jobs:
           }
 
           int main(void) {
-              printf("===== V91 native clock surface probe =====\n");
+              printf("===== V92 native clock surface probe =====\n");
               printf("pid=%ld uid=%ld\n", (long)getpid(), (long)getuid());
               printf("CLOCK ids: REALTIME=%d MONOTONIC=%d MONOTONIC_RAW=%d BOOTTIME=%d\n",
                      CLOCK_REALTIME, CLOCK_MONOTONIC, CLOCK_MONOTONIC_RAW, CLOCK_BOOTTIME);
@@ -2627,33 +2629,33 @@ jobs:
           }
           EOF_CPROBE
 
-          sed -i 's/^          //' "$OUT_DIR/v91-clock-probe.c"
+          sed -i 's/^          //' "$OUT_DIR/v92-clock-probe.c"
 
-          echo "===== BUILD ARM64 CLOCK PROBE V91 ====="
-          PROBE_LOG="$OUT_DIR/v91-clock-probe-build.log"
+          echo "===== BUILD ARM64 CLOCK PROBE V92 ====="
+          PROBE_LOG="$OUT_DIR/v92-clock-probe-build.log"
           : > "$PROBE_LOG"
           set +e
-          aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v91-clock-probe.c" -o "$OUT_DIR/v91-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
+          aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v92-clock-probe.c" -o "$OUT_DIR/v92-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
           RC=$?
           if [ "$RC" -ne 0 ]; then
-            aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v91-clock-probe.c" -o "$OUT_DIR/v91-clock-probe-arm64" >> "$PROBE_LOG" 2>&1
+            aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v92-clock-probe.c" -o "$OUT_DIR/v92-clock-probe-arm64" >> "$PROBE_LOG" 2>&1
             RC=$?
           fi
           set -e
-          if [ "$RC" -eq 0 ] && [ -s "$OUT_DIR/v91-clock-probe-arm64" ]; then
-            file "$OUT_DIR/v91-clock-probe-arm64" | tee -a "$PROBE_LOG"
-            chmod +x "$OUT_DIR/v91-clock-probe-arm64"
+          if [ "$RC" -eq 0 ] && [ -s "$OUT_DIR/v92-clock-probe-arm64" ]; then
+            file "$OUT_DIR/v92-clock-probe-arm64" | tee -a "$PROBE_LOG"
+            chmod +x "$OUT_DIR/v92-clock-probe-arm64"
           else
             echo "[WARN] native clock probe build failed; shell diagnostic still works" | tee -a "$PROBE_LOG"
-            cat > "$OUT_DIR/v91-clock-probe-arm64.README.txt" <<'EOF_README'
+            cat > "$OUT_DIR/v92-clock-probe-arm64.README.txt" <<'EOF_README'
           Native clock probe did not compile on the runner.
-          Use v91-clock-surface-check.bat for shell/proc/dumpsys/WiFi checks.
+          Use v92-clock-surface-check.bat for shell/proc/dumpsys/WiFi checks.
           EOF_README
           fi
 
-          cat > "$OUT_DIR/v91-clock-surface-check-device.sh" <<'EOF_SH'
+          cat > "$OUT_DIR/v92-clock-surface-check-device.sh" <<'EOF_SH'
           #!/system/bin/sh
-          echo "===== V91 CLOCK/WIFI SURFACE CHECK DEVICE SH ====="
+          echo "===== V92 CLOCK/WIFI SURFACE CHECK DEVICE SH ====="
           echo "-- identity/kernel --"
           id
           uname -a
@@ -2679,10 +2681,10 @@ jobs:
           dumpsys alarm | grep -iE 'nowRTC|nowELAPSED|RuntimeStarted|Runtime uptime' || true
 
           echo "-- native clock probe --"
-          if [ -x /data/local/tmp/v91-clock-probe ]; then
-            /data/local/tmp/v91-clock-probe
+          if [ -x /data/local/tmp/v92-clock-probe ]; then
+            /data/local/tmp/v92-clock-probe
           else
-            echo "Missing /data/local/tmp/v91-clock-probe"
+            echo "Missing /data/local/tmp/v92-clock-probe"
           fi
 
           echo "-- WiFi service toggle --"
@@ -2734,19 +2736,19 @@ jobs:
           echo "-- dmesg WiFi/KernelSU recent --"
           dmesg 2>/dev/null | grep -iE 'ghost_uptime|ksud|KernelSU|dhd|bcmdhd|wifi|wlan|firmware|nvram|clm|cfg80211|denied|avc' | tail -260 || true
           EOF_SH
-          sed -i 's/^          //' "$OUT_DIR/v91-clock-surface-check-device.sh"
-          chmod +x "$OUT_DIR/v91-clock-surface-check-device.sh"
+          sed -i 's/^          //' "$OUT_DIR/v92-clock-surface-check-device.sh"
+          chmod +x "$OUT_DIR/v92-clock-surface-check-device.sh"
 
-          cat > "$OUT_DIR/v91-clock-surface-check.bat" <<'EOF_BAT'
+          cat > "$OUT_DIR/v92-clock-surface-check.bat" <<'EOF_BAT'
           @echo off
           setlocal EnableExtensions EnableDelayedExpansion
           set ADB=adb
           if exist "D:\platform-tools\adb.exe" set ADB=D:\platform-tools\adb.exe
-          set BIN=%~dp0v91-clock-probe-arm64
-          set DEVSH=%~dp0v91-clock-surface-check-device.sh
-          set LOG=%~dp0v91-clock-surface-check.log
+          set BIN=%~dp0v92-clock-probe-arm64
+          set DEVSH=%~dp0v92-clock-surface-check-device.sh
+          set LOG=%~dp0v92-clock-surface-check.log
 
-          echo ===== V91 CLOCK/WIFI SURFACE CHECK ===== > "%LOG%"
+          echo ===== V92 CLOCK/WIFI SURFACE CHECK ===== > "%LOG%"
           echo Generated at: %DATE% %TIME% >> "%LOG%"
           echo ADB: %ADB% >> "%LOG%"
           echo. >> "%LOG%"
@@ -2756,16 +2758,16 @@ jobs:
           echo. >> "%LOG%"
 
           if exist "%BIN%" (
-            "%ADB%" push "%BIN%" /data/local/tmp/v91-clock-probe >> "%LOG%" 2>&1
-            "%ADB%" shell "chmod 755 /data/local/tmp/v91-clock-probe" >> "%LOG%" 2>&1
+            "%ADB%" push "%BIN%" /data/local/tmp/v92-clock-probe >> "%LOG%" 2>&1
+            "%ADB%" shell "chmod 755 /data/local/tmp/v92-clock-probe" >> "%LOG%" 2>&1
           ) else (
             echo WARN: Missing native probe binary: %BIN% >> "%LOG%"
           )
 
           echo ===== PUSH/RUN DEVICE DIAGNOSTIC SCRIPT ===== >> "%LOG%"
-          "%ADB%" push "%DEVSH%" /data/local/tmp/v91-clock-surface-check-device.sh >> "%LOG%" 2>&1
-          "%ADB%" shell "chmod 755 /data/local/tmp/v91-clock-surface-check-device.sh" >> "%LOG%" 2>&1
-          "%ADB%" shell "su -c /data/local/tmp/v91-clock-surface-check-device.sh" >> "%LOG%" 2>&1
+          "%ADB%" push "%DEVSH%" /data/local/tmp/v92-clock-surface-check-device.sh >> "%LOG%" 2>&1
+          "%ADB%" shell "chmod 755 /data/local/tmp/v92-clock-surface-check-device.sh" >> "%LOG%" 2>&1
+          "%ADB%" shell "su -c /data/local/tmp/v92-clock-surface-check-device.sh" >> "%LOG%" 2>&1
           echo. >> "%LOG%"
 
           type "%LOG%"
@@ -2774,9 +2776,9 @@ jobs:
           endlocal
           EOF_BAT
 
-          sed -i 's/^          //' "$OUT_DIR/v91-clock-surface-check.bat"
+          sed -i 's/^          //' "$OUT_DIR/v92-clock-surface-check.bat"
 
-          ls -lh "$OUT_DIR"/v91-clock-*
+          ls -lh "$OUT_DIR"/v92-clock-*
 
       - name: Show useful errors
         if: failure()
@@ -2813,7 +2815,7 @@ jobs:
           } > KernelSU-config.txt
           {
             echo "===== SuSFS build info snapshot ====="
-            echo "workflow=v91-q-ksu-susfs-wififix-l62"
+            echo "workflow=v92-q-ksu-susfs-wififix-l63"
             echo "date=$(date -u)"
             echo "DEVICE=${DEVICE:-unknown}"
             echo "MODEL_NAME=${MODEL_NAME:-unknown}"
@@ -2828,9 +2830,9 @@ jobs:
           } > SuSFS-build-info.txt
           ls -lah build.log KernelSU-config.txt SuSFS-build-info.txt || true
           {
-            echo "===== CHATGPT READABLE FAILURE LOG V91 ====="
+            echo "===== CHATGPT READABLE FAILURE LOG V92 ====="
             echo "date_utc=$(date -u)"
-            echo "workflow=v91-q-ksu-susfs-wififix-l62"
+            echo "workflow=v92-q-ksu-susfs-wififix-l63"
             echo "repo=${GITHUB_REPOSITORY:-unknown}"
             echo "ref_to_build=${{ inputs.ref_to_build }}"
             echo "device=${DEVICE:-unknown}"
@@ -2852,14 +2854,14 @@ jobs:
               cat s9-ghost-uptime-l62-report.txt 2>/dev/null || true
             cat s9-boottime-surface-l62-report.txt 2>/dev/null || true
             cat s9-wifi-safe-l62-report.txt 2>/dev/null || true
-          } > ChatGPT-readable-build-log-v91.txt
-          ls -lah ChatGPT-readable-build-log-v91.txt || true
+          } > ChatGPT-readable-build-log-v92.txt
+          ls -lah ChatGPT-readable-build-log-v92.txt || true
 
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v91-q-ksu-susfs-wififix-l62
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v92-q-ksu-susfs-wififix-l63
           path: |
             kernel/*.log
             kernel/*.txt
@@ -2945,7 +2947,7 @@ jobs:
           RAW_DIR="$OUT_DIR/raw"
           AK_DIR="$GITHUB_WORKSPACE/AnyKernel3"
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
-          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-PixelExp-A12-VendorQ-v91-q-ksu-susfs-wififix-l62-${SHORT_SHA}.zip"
+          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-PixelExp-A12-VendorQ-v92-q-ksu-susfs-wififix-l63-${SHORT_SHA}.zip"
 
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 "$AK_DIR"
 
@@ -2964,7 +2966,7 @@ jobs:
             "## Target: Samsung Galaxy S9 ${MODEL_NAME} / ${DEVICE} / Pixel Experience Android 12 with Samsung Q vendor blobs" \
             "" \
             "properties() { '" \
-            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} PixelExp Android12 S v91 KernelSU Next SuSFS WiFiFix GhostUptime L62" \
+            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} PixelExp Android12 S v92 KernelSU Next SuSFS WiFiFix GhostUptime L62" \
             "do.devicecheck=1" \
             "do.modules=0" \
             "do.systemless=1" \
@@ -3017,13 +3019,13 @@ jobs:
           set +e
           OUT_DIR="$GITHUB_WORKSPACE/out"
           KERNEL_DIR="$GITHUB_WORKSPACE/kernel"
-          LOG="$OUT_DIR/chatgpt-readable-build-log-v91.txt"
+          LOG="$OUT_DIR/chatgpt-readable-build-log-v92.txt"
           mkdir -p "$OUT_DIR"
 
           {
-            echo "===== CHATGPT READABLE BUILD LOG V91 ====="
+            echo "===== CHATGPT READABLE BUILD LOG V92 ====="
             echo "date_utc=$(date -u)"
-            echo "workflow=v91-q-ksu-susfs-wififix-l62"
+            echo "workflow=v92-q-ksu-susfs-wififix-l63"
             echo "repo=${GITHUB_REPOSITORY:-unknown}"
             echo "run=${GITHUB_RUN_ID:-unknown} attempt=${GITHUB_RUN_ATTEMPT:-unknown}"
             echo "sha=${GITHUB_SHA:-unknown}"
@@ -3070,13 +3072,13 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v91-q-ksu-susfs-wififix-l62
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v92-q-ksu-susfs-wififix-l63
           path: |
             out/*.zip
             out/raw/*
             out/*.log
-            out/chatgpt-readable-build-log-v91.txt
-            out/v91-clock-*
+            out/chatgpt-readable-build-log-v92.txt
+            out/v92-clock-*
             out/kernel.config
             out/modules-*
             out/KernelSU-*.txt
