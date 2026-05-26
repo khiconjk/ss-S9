@@ -1,0 +1,314 @@
+name: Build Samsung S9 kernel - Pixel A12 - fake uptime
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: "Device: starlte=Galaxy S9 G960, star2lte=S9+ G965, crownlte=Note9 N960"
+        required: true
+        type: choice
+        default: starlte
+        options:
+          - starlte
+          - star2lte
+          - crownlte
+      fake_days:
+        description: "Fake uptime days to add. Recommended: 12"
+        required: true
+        default: "12"
+      localversion:
+        description: "Kernel localversion suffix"
+        required: true
+        default: "-s9-pixel-a12-uptime"
+
+jobs:
+  build:
+    name: Build ${{ inputs.device }} fake uptime ${{ inputs.fake_days }} days
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+
+    env:
+      ARCH: arm64
+      SUBARCH: arm64
+      ANDROID_MAJOR_VERSION: s
+      PLATFORM_VERSION: "12"
+      CONFIG_SECTION_MISMATCH_WARN_ONLY: "y"
+      OUT_DIR: out
+      ARTIFACT_DIR: artifact-readme-and-output
+      LOG_DIR: ci-logs
+
+    steps:
+      - name: Checkout ss-S9 source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Free disk space
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache || true
+          sudo apt-get clean
+          df -h
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            git curl wget tar xz-utils zip unzip file rsync \
+            build-essential bc bison flex libssl-dev libelf-dev \
+            python3 cpio lz4 gzip kmod ca-certificates \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+
+      - name: Prepare variables
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "$LOG_DIR" "$ARTIFACT_DIR" patches/uptime toolchains
+          case "${{ inputs.device }}" in
+            starlte)
+              echo "DEVICE_DEFCONFIG=exynos9810-starlte_defconfig" >> "$GITHUB_ENV"
+              echo "DEVICE_MODEL=G960_Samsung_S9" >> "$GITHUB_ENV"
+              ;;
+            star2lte)
+              echo "DEVICE_DEFCONFIG=exynos9810-star2lte_defconfig" >> "$GITHUB_ENV"
+              echo "DEVICE_MODEL=G965_Samsung_S9_Plus" >> "$GITHUB_ENV"
+              ;;
+            crownlte)
+              echo "DEVICE_DEFCONFIG=exynos9810-crownlte_defconfig" >> "$GITHUB_ENV"
+              echo "DEVICE_MODEL=N960_Samsung_Note9" >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "Unknown device: ${{ inputs.device }}" >&2
+              exit 1
+              ;;
+          esac
+          echo "FAKE_DAYS=${{ inputs.fake_days }}" >> "$GITHUB_ENV"
+
+      - name: Create and apply S9 fake uptime patch
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 <<'PY'
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          fake_days_raw = os.environ.get("FAKE_DAYS", "12").strip()
+          if not re.fullmatch(r"[0-9]+", fake_days_raw):
+              raise SystemExit(f"fake_days must be a number, got: {fake_days_raw!r}")
+          fake_days = int(fake_days_raw)
+          if not (1 <= fake_days <= 30):
+              raise SystemExit("fake_days should be 1..30 for a sane test build")
+
+          src = Path("kernel/time/timekeeping.c")
+          text = src.read_text()
+
+          marker = "s9_fake_uptime_offset_ns"
+          if marker not in text:
+              anchor = "static struct timekeeper shadow_timekeeper;"
+              helper = f'''
+
+          /* Fake Uptime Toan He Thong - Samsung Exynos9810 / S9 Pixel Android 12
+           * Ported from ssS21-test-RTC patches/uptime, adapted for Linux 4.9.
+           * Do NOT add nanoseconds to timekeeping_get_delta(), because this kernel
+           * returns clock cycles there. Add the offset after cycle-to-ns conversion.
+           */
+          static inline s64 s9_fake_uptime_offset_ns(void)
+          {{
+          	return (s64){fake_days}LL * 86400LL * (s64)NSEC_PER_SEC;
+          }}
+          '''
+              if anchor not in text:
+                  raise SystemExit(f"Anchor not found: {anchor}")
+              text = text.replace(anchor, anchor + helper, 1)
+
+          old = '''static inline s64 timekeeping_get_ns(struct tk_read_base *tkr)
+          {
+          	cycle_t delta;
+
+          	delta = timekeeping_get_delta(tkr);
+          	return timekeeping_delta_to_ns(tkr, delta);
+          }'''
+          new = '''static inline s64 timekeeping_get_ns(struct tk_read_base *tkr)
+          {
+          	cycle_t delta;
+
+          	delta = timekeeping_get_delta(tkr);
+          	return timekeeping_delta_to_ns(tkr, delta) + s9_fake_uptime_offset_ns();
+          }'''
+
+          if new not in text:
+              if old in text:
+                  text = text.replace(old, new, 1)
+              else:
+                  pattern = re.compile(
+                      r"static inline s64 timekeeping_get_ns\(struct tk_read_base \*tkr\)\s*\{\s*"
+                      r"cycle_t delta;\s*"
+                      r"delta = timekeeping_get_delta\(tkr\);\s*"
+                      r"return timekeeping_delta_to_ns\(tkr, delta\);\s*\}",
+                      re.S,
+                  )
+                  text, count = pattern.subn(new, text, count=1)
+                  if count != 1:
+                      raise SystemExit("Could not patch timekeeping_get_ns(); inspect kernel/time/timekeeping.c manually")
+
+          src.write_text(text)
+          patch_path = Path("patches/uptime/s9-fake-uptime-{}days.patch".format(fake_days))
+          diff = subprocess.run(["git", "diff", "--", str(src)], check=True, text=True, stdout=subprocess.PIPE).stdout
+          patch_path.write_text(diff)
+          print(diff)
+          PY
+
+          echo "===== PATCH TRACE =====" | tee "$LOG_DIR/uptime-patch-check.txt"
+          grep -n "s9_fake_uptime\|Fake Uptime\|timekeeping_get_ns" kernel/time/timekeeping.c | tee -a "$LOG_DIR/uptime-patch-check.txt"
+          git diff -- kernel/time/timekeeping.c | tee "$LOG_DIR/uptime.patch.preview.log"
+
+      - name: Prepare defconfig for selected device
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf "$OUT_DIR"
+          mkdir -p "$OUT_DIR"
+          cp -f arch/arm64/configs/exynos9810_defconfig arch/arm64/configs/exynos9810_temp_defconfig
+          printf '\n# Device overlay: %s\n' "$DEVICE_DEFCONFIG" >> arch/arm64/configs/exynos9810_temp_defconfig
+          cat "arch/arm64/configs/$DEVICE_DEFCONFIG" >> arch/arm64/configs/exynos9810_temp_defconfig
+          printf '\nCONFIG_LOCALVERSION="%s"\n# CONFIG_LOCALVERSION_AUTO is not set\n' "${{ inputs.localversion }}" >> arch/arm64/configs/exynos9810_temp_defconfig
+          tail -80 arch/arm64/configs/exynos9810_temp_defconfig | tee "$LOG_DIR/defconfig-tail.log"
+
+      - name: Setup Android GCC 4.9 toolchains
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # Preferred for Android 12/Lineage 19.1 era kernels. If GitHub clone is unavailable,
+          # the build falls back to Ubuntu cross compilers installed above.
+          if [ ! -x toolchains/aarch64-linux-android-4.9/bin/aarch64-linux-android-gcc ]; then
+            git clone --depth=1 -b lineage-19.1 \
+              https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 \
+              toolchains/aarch64-linux-android-4.9 || true
+          fi
+          if [ ! -x toolchains/arm-linux-androideabi-4.9/bin/arm-linux-androideabi-gcc ]; then
+            git clone --depth=1 -b lineage-19.1 \
+              https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 \
+              toolchains/arm-linux-androideabi-4.9 || true
+          fi
+
+          if [ -x toolchains/aarch64-linux-android-4.9/bin/aarch64-linux-android-gcc ]; then
+            GCC64_LOCAL="$PWD/toolchains/aarch64-linux-android-4.9/bin/aarch64-linux-android-"
+            echo "$PWD/toolchains/aarch64-linux-android-4.9/bin" >> "$GITHUB_PATH"
+          else
+            GCC64_LOCAL="aarch64-linux-gnu-"
+          fi
+          echo "GCC64=$GCC64_LOCAL" >> "$GITHUB_ENV"
+
+          if [ -x toolchains/arm-linux-androideabi-4.9/bin/arm-linux-androideabi-gcc ]; then
+            GCC32_LOCAL="$PWD/toolchains/arm-linux-androideabi-4.9/bin/arm-linux-androideabi-"
+            echo "$PWD/toolchains/arm-linux-androideabi-4.9/bin" >> "$GITHUB_PATH"
+          else
+            GCC32_LOCAL="arm-linux-gnueabi-"
+          fi
+          echo "GCC32=$GCC32_LOCAL" >> "$GITHUB_ENV"
+
+          echo "===== TOOLCHAIN VERSION =====" | tee "$LOG_DIR/toolchain.log"
+          ("${GCC64_LOCAL}"gcc --version || true) | tee -a "$LOG_DIR/toolchain.log"
+          ("${GCC32_LOCAL}"gcc --version || true) | tee -a "$LOG_DIR/toolchain.log"
+
+      - name: Configure kernel
+        shell: bash
+        run: |
+          set -euxo pipefail
+          make O="$OUT_DIR" ARCH=arm64 \
+            CROSS_COMPILE="$GCC64" CROSS_COMPILE_ARM32="$GCC32" \
+            exynos9810_temp_defconfig 2>&1 | tee "$LOG_DIR/config.log"
+          cp -f "$OUT_DIR/.config" "$ARTIFACT_DIR/kernel-config-${{ inputs.device }}.txt"
+          grep -n "S9\|UPTIME\|LOCALVERSION\|ANDROID_MAJOR\|CONFIG_MOTOR\|MAX77865" "$OUT_DIR/.config" | tee "$LOG_DIR/config-key-lines.log" || true
+
+      - name: Build kernel
+        shell: bash
+        run: |
+          set -o pipefail
+          echo "===== BUILD START =====" | tee "$LOG_DIR/build.log"
+          echo "device=${{ inputs.device }} model=$DEVICE_MODEL fake_days=$FAKE_DAYS" | tee -a "$LOG_DIR/build.log"
+          make O="$OUT_DIR" -j"$(nproc --all)" ARCH=arm64 \
+            CROSS_COMPILE="$GCC64" CROSS_COMPILE_ARM32="$GCC32" \
+            2>&1 | tee -a "$LOG_DIR/build.log"
+
+      - name: Collect outputs and readable logs
+        if: always()
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "$ARTIFACT_DIR/${{ inputs.device }}" "$ARTIFACT_DIR/logs" "$ARTIFACT_DIR/patches"
+          cp -f "$LOG_DIR"/* "$ARTIFACT_DIR/logs/" || true
+          cp -f patches/uptime/*.patch "$ARTIFACT_DIR/patches/" || true
+          cp -f arch/arm64/configs/exynos9810_temp_defconfig "$ARTIFACT_DIR/exynos9810_temp_defconfig" || true
+          cp -f "$OUT_DIR/.config" "$ARTIFACT_DIR/kernel-config-${{ inputs.device }}.txt" || true
+
+          echo "===== OUTPUT TREE =====" | tee "$ARTIFACT_DIR/logs/output-tree.log"
+          find "$OUT_DIR" -type f \( -name 'Image' -o -name 'Image.gz' -o -name 'dtb.img' -o -name '*.dtb' -o -name '*.ko' \) | sort | tee -a "$ARTIFACT_DIR/logs/output-tree.log" || true
+
+          IMAGE_PATH=""
+          for p in "$OUT_DIR/arch/arm64/boot/Image" arch/arm64/boot/Image; do
+            if [ -f "$p" ]; then IMAGE_PATH="$p"; break; fi
+          done
+          DTB_PATH=""
+          for p in "$OUT_DIR/arch/arm64/boot/dtb.img" arch/arm64/boot/dtb.img; do
+            if [ -f "$p" ]; then DTB_PATH="$p"; break; fi
+          done
+
+          if [ -n "$IMAGE_PATH" ]; then
+            cp -f "$IMAGE_PATH" "$ARTIFACT_DIR/${{ inputs.device }}/Image"
+            cp -f "$IMAGE_PATH" "$ARTIFACT_DIR/${{ inputs.device }}/zImage"
+          fi
+          if [ -n "$DTB_PATH" ]; then
+            cp -f "$DTB_PATH" "$ARTIFACT_DIR/${{ inputs.device }}/dtb.img"
+          fi
+
+          {
+            echo "Samsung S9 / Exynos9810 fake uptime build artifact"
+            echo "device=${{ inputs.device }}"
+            echo "model=$DEVICE_MODEL"
+            echo "fake_days=$FAKE_DAYS"
+            echo "branch=${GITHUB_REF_NAME}"
+            echo "commit=${GITHUB_SHA}"
+            echo "date_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo ""
+            echo "Files to inspect:"
+            echo "- logs/build.log"
+            echo "- logs/uptime-patch-check.txt"
+            echo "- logs/error-summary.log"
+            echo "- patches/s9-fake-uptime-${FAKE_DAYS}days.patch"
+            echo "- ${{ inputs.device }}/Image"
+            echo "- ${{ inputs.device }}/dtb.img if generated"
+            echo ""
+            echo "Note: For Samsung S9, flashing/packing depends on your ROM boot image layout."
+            echo "This artifact deliberately includes raw Image/zImage + dtb.img + full logs."
+          } | tee "$ARTIFACT_DIR/README_ARTIFACT.txt"
+
+          grep -i -n -E "error:|fatal error:|undefined reference|No such file|ld:|ld.lld:|FAILED|abort" "$LOG_DIR/build.log" \
+            | head -300 | tee "$ARTIFACT_DIR/logs/error-summary.log" || true
+
+          (cd "$ARTIFACT_DIR" && zip -r "S9-${{ inputs.device }}-Pixel-A12-fake-uptime-${FAKE_DAYS}days-readme-logs-output.zip" .)
+
+      - name: Fail if kernel Image missing
+        shell: bash
+        run: |
+          test -f "$ARTIFACT_DIR/${{ inputs.device }}/Image" || {
+            echo "ERROR: Kernel Image was not produced. Open artifact logs/build.log and logs/error-summary.log."
+            exit 1
+          }
+
+      - name: Upload artifact with readable logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: S9-${{ inputs.device }}-Pixel-A12-fake-uptime-${{ inputs.fake_days }}days
+          path: |
+            artifact-readme-and-output/**
+            ci-logs/**
+            patches/uptime/*.patch
+          if-no-files-found: warn
