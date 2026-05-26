@@ -1,4 +1,4 @@
-name: v90 S9 PixelExp A12 KSU SuSFS WiFi Recovery L62
+name: v91 S9 PixelExp A12 Vendor-Q KSU SuSFS WiFi Recovery L62
 
 "on":
   workflow_dispatch:
@@ -27,8 +27,8 @@ concurrency:
 env:
   ARCH: arm64
   SUBARCH: arm64
-  PLATFORM_VERSION: "12"
-  ANDROID_MAJOR_VERSION: s
+  PLATFORM_VERSION: "10"
+  ANDROID_MAJOR_VERSION: q
   TEMP_DEFCONFIG: exynos9810_temp_defconfig
   SUSFS_BRANCH: "1.4.2-kernel-4.9"
   SUSFS_REPO: "https://gitlab.com/1392726643/susfs4ksu.git"
@@ -193,7 +193,7 @@ jobs:
           echo "Clean done" | tee -a clean.log
 
 
-      - name: Patch kernel release to G960NK v90 PixelExp A12 KSU Next + SuSFS WiFi Safe Stable L62
+      - name: Patch kernel release to G960NK v91 PixelExp A12 KSU Next + SuSFS WiFi Safe Stable L62
         shell: bash
         working-directory: kernel
         run: |
@@ -212,9 +212,9 @@ jobs:
           text = re.sub(r"^SUBLEVEL\s*=\s*.*$", "SUBLEVEL = 220", text, flags=re.MULTILINE)
 
           if re.search(r"^EXTRAVERSION\s*=", text, flags=re.MULTILINE):
-              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v90-a12-ksu-susfs-l62", text, flags=re.MULTILINE)
+              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v91-q-ksu-susfs-l62", text, flags=re.MULTILINE)
           else:
-              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v90-a12-ksu-susfs-l62", 1)
+              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v91-q-ksu-susfs-l62", 1)
 
           makefile.write_text(text)
           PY
@@ -222,8 +222,8 @@ jobs:
           echo "===== AFTER VERSION PATCH ====="
           grep -nE "^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)[[:space:]]*=" Makefile || true
 
-          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v90-a12-ksu-susfs-l62"
-          RELEASE_LEN=$(printf "%s" "4.9.220-G960NK-v90-a12-ksu-susfs-l62" | wc -c)
+          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v91-q-ksu-susfs-l62"
+          RELEASE_LEN=$(printf "%s" "4.9.220-G960NK-v91-q-ksu-susfs-l62" | wc -c)
           echo "UTS_RELEASE length=$RELEASE_LEN / 64"
           if [ "$RELEASE_LEN" -gt 64 ]; then
             echo "ERROR: UTS_RELEASE exceeds Linux 64-character limit"
@@ -1719,7 +1719,7 @@ jobs:
             echo "Device: ${DEVICE}"
             echo "Model: ${MODEL_NAME}"
             echo "Android: ${PLATFORM_VERSION}/${ANDROID_MAJOR_VERSION}"
-            echo "Kernel release target: 4.9.220-G960NK-v90-a12-ksu-susfs-l62"
+            echo "Kernel release target: 4.9.220-G960NK-v91-q-ksu-susfs-l62"
             echo ""
           } > ksu-next-build-info.txt
 
@@ -1962,27 +1962,25 @@ jobs:
 
           echo "SipHash weak compat link fix L62 completed" | tee -a "$LOG"
 
-      - name: Apply clean S9 ghost uptime proc surface L62
+      - name: Apply S9 ghost uptime proc/sysinfo only L63 WiFi Safe
         shell: bash
         working-directory: kernel
         run: |
           set -euo pipefail
-          echo "===== APPLY CLEAN S9 GHOST UPTIME L62 ====="
+          echo "===== APPLY S9 GHOST UPTIME PROC/SYSINFO ONLY L63 WIFI SAFE ====="
           mkdir -p scripts include/linux kernel
-          cat > scripts/ci_apply_s9_ghost_uptime_l62.py <<'PY'
+          cat > scripts/ci_apply_s9_ghost_uptime_proc_only_l63.py <<'PY'
           from pathlib import Path
           import re
 
           ROOT = Path('.')
-          TIMEKEEPING = ROOT / 'kernel/time/timekeeping.c'
-          STAT = ROOT / 'fs/stat.c'
           PROC_UPTIME = ROOT / 'fs/proc/uptime.c'
           PROC_STAT = ROOT / 'fs/proc/stat.c'
           SYS = ROOT / 'kernel/sys.c'
           HEADER = ROOT / 'include/linux/ghost_uptime.h'
           MODULE = ROOT / 'kernel/ghost_uptime.c'
           KMAKE = ROOT / 'kernel/Makefile'
-          REPORT = ROOT / 's9-ghost-uptime-l62-report.txt'
+          REPORT = ROOT / 's9-ghost-uptime-l63-report.txt'
 
           def die(msg):
               raise SystemExit('ERROR: ' + msg)
@@ -2013,15 +2011,11 @@ jobs:
           #include <linux/types.h>
           #include <linux/time64.h>
 
-          struct inode;
-          struct kstat;
+          struct sysinfo;
           struct timespec;
           struct timespec64;
-          struct sysinfo;
 
           extern u64 ghost_uptime_offset_ns;
-          void ghost_uptime_apply_boot_time(struct timespec64 *boot_time, time64_t wall_sec);
-          void ghost_uptime_apply_stat(struct inode *inode, struct kstat *stat);
           u64 ghost_uptime_get_offset_ns(void);
           void ghost_uptime_apply_proc_uptime_ts(struct timespec *uptime);
           void ghost_uptime_apply_proc_uptime_pair(struct timespec *uptime, struct timespec *idle);
@@ -2033,25 +2027,29 @@ jobs:
 
           write(MODULE, '''// SPDX-License-Identifier: GPL-2.0
           /*
-           * S9/Exynos9810 clean ghost uptime helper L62.
+           * S9/Exynos9810 ghost uptime helper L63 - WiFi-safe proc/sysinfo only.
            *
-           * Design:
-           * - one module owns the offset
-           * - timekeeping_get_delta(), raw clock, sched_clock and fast clocks stay untouched
-           * - timekeeping_init() only shifts the boot-time source once
-           * - generic_fillattr() reuses the same offset for selected virtual fs timestamps
+           * This version intentionally does NOT patch:
+           * - kernel/time/timekeeping.c
+           * - CLOCK_BOOTTIME / posix timers
+           * - VDSO data
+           * - generic_fillattr/stat timestamps
+           *
+           * Reason: Pixel Experience Android 12 on S9 still uses Samsung Q vendor
+           * blobs/HAL paths. Keep all kernel timekeeping and filesystem timestamps
+           * stock-real, and only spoof Android-visible proc/sysinfo display surfaces.
            */
 
           #include <linux/ghost_uptime.h>
           #include <linux/export.h>
-          #include <linux/fs.h>
           #include <linux/jiffies.h>
           #include <linux/kernel.h>
           #include <linux/math64.h>
           #include <linux/printk.h>
-          #include <linux/stat.h>
           #include <linux/time.h>
           #include <linux/time64.h>
+          #include <linux/timekeeping.h>
+          #include <linux/types.h>
 
           #define GHOST_UPTIME_MIN_DAYS 15ULL
           #define GHOST_UPTIME_MAX_DAYS 25ULL
@@ -2099,40 +2097,36 @@ jobs:
               return secs;
           }
 
-          void ghost_uptime_apply_boot_time(struct timespec64 *boot_time, time64_t wall_sec)
+          static void ghost_uptime_init_once(void)
           {
+              time64_t wall_sec;
               u64 secs;
 
-              if (!boot_time || ghost_uptime_ready)
+              if (ghost_uptime_ready)
                   return;
 
+              wall_sec = ktime_get_real_seconds();
               secs = ghost_uptime_make_offset_secs(wall_sec);
-
-              if (boot_time->tv_sec > (time64_t)secs)
-                  boot_time->tv_sec -= (time64_t)secs;
-              else if (wall_sec > (time64_t)secs)
-                  boot_time->tv_sec = wall_sec - (time64_t)secs;
-              else
-                  boot_time->tv_sec = 0;
 
               ghost_uptime_offset_ns = secs * NSEC_PER_SEC;
               ghost_uptime_ready = true;
 
           #ifndef CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
-              pr_info("ghost_uptime_l62: offset_secs=%llu offset_days=%llu\n",
+              pr_info("ghost_uptime_l63_proc_only: offset_secs=%llu offset_days=%llu\\n",
                       secs, div64_u64(secs, GHOST_UPTIME_DAY_SECS));
           #endif
           }
-          EXPORT_SYMBOL_GPL(ghost_uptime_apply_boot_time);
 
           u64 ghost_uptime_get_offset_ns(void)
           {
+              ghost_uptime_init_once();
               return ghost_uptime_offset_ns;
           }
           EXPORT_SYMBOL_GPL(ghost_uptime_get_offset_ns);
 
           static u64 ghost_uptime_offset_secs(void)
           {
+              ghost_uptime_init_once();
               if (!ghost_uptime_offset_ns)
                   return 0;
               return div64_u64(ghost_uptime_offset_ns, NSEC_PER_SEC);
@@ -2169,118 +2163,31 @@ jobs:
 
           void ghost_uptime_apply_proc_btime64(struct timespec64 *boottime)
           {
-              u64 off;
+              u64 off = ghost_uptime_offset_secs();
 
-              if (!boottime || !ghost_uptime_offset_ns)
+              if (!boottime || !off)
                   return;
-              off = ghost_uptime_offset_secs();
               if (boottime->tv_sec > (time64_t)off)
                   boottime->tv_sec -= (time64_t)off;
               else
                   boottime->tv_sec = 0;
           }
           EXPORT_SYMBOL_GPL(ghost_uptime_apply_proc_btime64);
-
-          static bool ghost_uptime_stat_magic_allowed(unsigned long magic)
-          {
-              switch (magic) {
-              case 0x9fa0:
-              case 0x62656572:
-              case 0x1021994:
-              case 0x64626720:
-              case 0x73636673:
-              case 0x27e0eb:
-              case 0x6e736673:
-              case 0x1373:
-                  return true;
-              default:
-                  return false;
-              }
-          }
-
-          static void ghost_uptime_sub_time64(struct timespec64 *ts, u64 off)
-          {
-              if (!ts)
-                  return;
-              if (ts->tv_sec > 0 && (u64)ts->tv_sec > off)
-                  ts->tv_sec -= off;
-          }
-
-          void ghost_uptime_apply_stat(struct inode *inode, struct kstat *stat)
-          {
-              u64 off;
-
-              if (!inode || !inode->i_sb || !stat || !ghost_uptime_offset_ns)
-                  return;
-              if (!ghost_uptime_stat_magic_allowed(inode->i_sb->s_magic))
-                  return;
-
-              off = div64_u64(ghost_uptime_offset_ns, NSEC_PER_SEC);
-              ghost_uptime_sub_time64(&stat->atime, off);
-              ghost_uptime_sub_time64(&stat->mtime, off);
-              ghost_uptime_sub_time64(&stat->ctime, off);
-          }
-          EXPORT_SYMBOL_GPL(ghost_uptime_apply_stat);
           ''')
           report.append('wrote include/linux/ghost_uptime.h')
           report.append('wrote kernel/ghost_uptime.c')
+          report.append('mode=L63 proc/sysinfo only, no timekeeping/stat/boottime hooks')
 
           km = read(KMAKE)
-          # S9 kernel/Makefile defines obj-y after the file header, so adding
-          # obj-y at the very top can be overwritten later.  Force a bottom
-          # append marker to guarantee ghost_uptime.o is linked into vmlinux.
           km = re.sub(r'(?m)^obj-y\s*\+=\s*ghost_uptime\.o\s*\n', '', km)
-          marker = '# S9_GHOST_UPTIME_L62_LINK_OBJECT\nobj-y += ghost_uptime.o\n'
-          if 'S9_GHOST_UPTIME_L62_LINK_OBJECT' not in km:
+          marker = '# S9_GHOST_UPTIME_L63_PROC_ONLY_LINK_OBJECT\nobj-y += ghost_uptime.o\n'
+          if 'S9_GHOST_UPTIME_L63_PROC_ONLY_LINK_OBJECT' not in km:
               km = km.rstrip() + '\n\n' + marker
               write(KMAKE, km)
               report.append('kernel/Makefile appended obj-y += ghost_uptime.o at bottom')
           else:
               report.append('kernel/Makefile already contains bottom ghost_uptime.o marker')
 
-          tk = read(TIMEKEEPING)
-          tk_orig = tk
-          tk = add_include_once(tk, '#include <linux/ghost_uptime.h>')
-          tk = re.sub(r'\n?\s*static\s+inline\s+u64\s+get_fake_boottime(?:_ns)?\s*\(\s*void\s*\)\s*\{.*?\}\s*', '\n', tk, flags=re.S)
-          tk = re.sub(r'return\s+delta\s*\+\s*get_fake_boottime(?:_ns)?\s*\(\s*\)\s*;', 'return delta;', tk)
-          tk = re.sub(r'return\s+tk_clock_read\s*\(\s*tkr\s*\)\s*-\s*tkr->cycle_last\s*\+\s*get_fake_boottime(?:_ns)?\s*\(\s*\)\s*;', 'return tk_clock_read(tkr) - tkr->cycle_last;', tk)
-          tk = re.sub(r'\s*\+\s*get_fake_boottime(?:_ns)?\s*\(\s*\)', '', tk)
-          tk = re.sub(r'\bu64\s+arch_sys_boot_offset\s*(?:=\s*0)?\s*;\s*(?:EXPORT_SYMBOL_GPL\s*\(\s*arch_sys_boot_offset\s*\)\s*;)?', '', tk)
-
-          call = '\n\tghost_uptime_apply_boot_time(&boot, now.tv_sec);'
-          if 'ghost_uptime_apply_boot_time(&boot, now.tv_sec)' not in tk:
-              pattern = r'(if\s*\(\s*boot\.tv_sec\s*==\s*0\s*&&\s*boot\.tv_nsec\s*==\s*0\s*\)\s*boot\s*=\s*tk_xtime\s*\(\s*tk\s*\)\s*;)'
-              tk, n = re.subn(pattern, r'\1' + call, tk, count=1)
-              if n != 1:
-                  die('cannot find S9 boot=tk_xtime anchor in timekeeping_init()')
-          if 'get_fake_boottime' in tk:
-              die('old get_fake_boottime remains in timekeeping.c')
-          if re.search(r'return\s+delta\s*\+', tk):
-              die('suspicious return delta + remains in timekeeping.c')
-          if tk.count('ghost_uptime_apply_boot_time(&boot, now.tv_sec)') != 1:
-              die('ghost_uptime_apply_boot_time call count is not exactly 1')
-          write(TIMEKEEPING, tk)
-          report.append(f'timekeeping.c changed={tk != tk_orig}')
-
-          st = read(STAT)
-          st_orig = st
-          st = add_include_once(st, '#include <linux/ghost_uptime.h>')
-          st = re.sub(r'\n?\s*extern\s+u64\s+arch_sys_boot_offset\s*;\s*', '\n', st)
-          if 'ghost_uptime_apply_stat(inode, stat);' not in st:
-              st, n = re.subn(r'(stat->blocks\s*=\s*inode->i_blocks\s*;)', r'\1\n\tghost_uptime_apply_stat(inode, stat);', st, count=1)
-              if n != 1:
-                  die('cannot find stat->blocks anchor in fs/stat.c')
-          if st.count('ghost_uptime_apply_stat(inode, stat);') != 1:
-              die('ghost_uptime_apply_stat call count is not exactly 1')
-          if 'arch_sys_boot_offset' in st:
-              die('old arch_sys_boot_offset reference remains in fs/stat.c')
-          write(STAT, st)
-          report.append(f'stat.c changed={st != st_orig}')
-
-
-          # /proc/uptime and /proc/stat are Android-visible uptime surfaces.
-          # L62 also adjusts /proc/uptime idle field and sysinfo(2), which toybox uptime often uses.
-          # Keep real CLOCK_MONOTONIC / RAW untouched; only change exported display values.
           pu = read(PROC_UPTIME)
           pu_orig = pu
           pu = add_include_once(pu, '#include <linux/ghost_uptime.h>')
@@ -2297,14 +2204,11 @@ jobs:
           sysc = read(SYS)
           sysc_orig = sysc
           sysc = add_include_once(sysc, '#include <linux/ghost_uptime.h>')
-          # kernel/sys.c is compiled as old GNU C with -Werror=declaration-after-statement.
-          # Force a file-scope prototype near the include area because the previous
-          # header include can land inside vendor/KSU #ifdef include regions on this tree.
-          sysc = re.sub(r'\n\s*/\* S9_GHOST_UPTIME_SYSINFO_PROTO_L62 \*/\s*\n\s*extern\s+void\s+ghost_uptime_apply_sysinfo\s*\(\s*struct\s+sysinfo\s*\*\s*info\s*\)\s*;\s*', '\n', sysc)
+          sysc = re.sub(r'\n\s*/\* S9_GHOST_UPTIME_SYSINFO_PROTO_L6[0-9] \*/\s*\n\s*extern\s+void\s+ghost_uptime_apply_sysinfo\s*\(\s*struct\s+sysinfo\s*\*\s*info\s*\)\s*;\s*', '\n', sysc)
           sysc = re.sub(r'\n\s*extern\s+void\s+ghost_uptime_apply_sysinfo\s*\(\s*struct\s+sysinfo\s*\*\s*info\s*\)\s*;\s*\n\s*ghost_uptime_apply_sysinfo\s*\(\s*info\s*\)\s*;', '\n\tghost_uptime_apply_sysinfo(info);', sysc)
           sysc = re.sub(r'\n\s*extern\s+void\s+ghost_uptime_apply_sysinfo\s*\(\s*struct\s+sysinfo\s*\*\s*info\s*\)\s*;', '\n', sysc)
-          proto = '\n/* S9_GHOST_UPTIME_SYSINFO_PROTO_L62 */\nextern void ghost_uptime_apply_sysinfo(struct sysinfo *info);\n'
-          if 'S9_GHOST_UPTIME_SYSINFO_PROTO_L62' not in sysc:
+          proto = '\n/* S9_GHOST_UPTIME_SYSINFO_PROTO_L63 */\nextern void ghost_uptime_apply_sysinfo(struct sysinfo *info);\n'
+          if 'S9_GHOST_UPTIME_SYSINFO_PROTO_L63' not in sysc:
               anchor = '#include <linux/syscalls.h>'
               if anchor in sysc:
                   sysc = sysc.replace(anchor, anchor + proto, 1)
@@ -2319,12 +2223,8 @@ jobs:
                   die('cannot find info->uptime assignment anchor in kernel/sys.c')
           if sysc.count('ghost_uptime_apply_sysinfo(info);') != 1:
               die('ghost_uptime_apply_sysinfo call count is not exactly 1')
-          if 'S9_GHOST_UPTIME_SYSINFO_PROTO_L62' not in sysc:
-              die('ghost_uptime sysinfo top-level prototype marker missing in kernel/sys.c')
-          if '#include <linux/ghost_uptime.h>' not in sysc:
-              die('ghost_uptime header include missing in kernel/sys.c')
           write(SYS, sysc)
-          report.append(f'kernel/sys.c sysinfo-sync top-level-prototype changed={sysc != sysc_orig}')
+          report.append(f'kernel/sys.c sysinfo-sync changed={sysc != sysc_orig}')
 
           ps = read(PROC_STAT)
           ps_orig = ps
@@ -2341,22 +2241,23 @@ jobs:
           REPORT.write_text('\n'.join(report) + '\n')
           print(REPORT.read_text())
           PY
-          python3 scripts/ci_apply_s9_ghost_uptime_l62.py
-          echo "===== VERIFY S9 GHOST UPTIME L62 ====="
-          grep -RniE "ghost_uptime_apply_boot_time|ghost_uptime_apply_stat|ghost_uptime_apply_proc_uptime_pair|ghost_uptime_apply_sysinfo|ghost_uptime_apply_proc_uptime_ts|ghost_uptime_apply_proc_btime64|ghost_uptime_offset_ns|ghost_uptime_l62|get_fake_boottime|arch_sys_boot_offset|return[[:space:]]+delta[[:space:]]*\\+" \
-            kernel/time/timekeeping.c fs/stat.c fs/proc/uptime.c fs/proc/stat.c kernel/sys.c include/linux/ghost_uptime.h kernel/ghost_uptime.c kernel/Makefile 2>/dev/null || true
-          if grep -RniE "get_fake_boottime|arch_sys_boot_offset|return[[:space:]]+delta[[:space:]]*\\+" kernel/time/timekeeping.c fs/stat.c include/linux/ghost_uptime.h 2>/dev/null; then
-            echo "ERROR: old/dirty uptime pattern still exists"
+          python3 scripts/ci_apply_s9_ghost_uptime_proc_only_l63.py
+
+          echo "===== VERIFY S9 GHOST UPTIME L63 PROC-ONLY ====="
+          grep -RniE "ghost_uptime_apply_proc_uptime_pair|ghost_uptime_apply_sysinfo|ghost_uptime_apply_proc_btime64|ghost_uptime_offset_ns|ghost_uptime_l63|ghost_uptime_apply_boot_time|ghost_uptime_apply_stat|ghost_uptime_apply_boottime_ts|get_fake_boottime|arch_sys_boot_offset|return[[:space:]]+delta[[:space:]]*\\+" \
+            fs/proc/uptime.c fs/proc/stat.c kernel/sys.c include/linux/ghost_uptime.h kernel/ghost_uptime.c kernel/Makefile kernel/time/timekeeping.c fs/stat.c 2>/dev/null || true
+          if grep -RniE "ghost_uptime_apply_boot_time|ghost_uptime_apply_stat|ghost_uptime_apply_boottime_ts|ghost_uptime_apply_boottime_ts64|get_fake_boottime|arch_sys_boot_offset|return[[:space:]]+delta[[:space:]]*\\+" \
+            include/linux/ghost_uptime.h kernel/ghost_uptime.c kernel/time/timekeeping.c fs/stat.c 2>/dev/null; then
+            echo "ERROR: unsafe timekeeping/stat/boottime hook pattern exists in v91 proc-only mode"
             exit 1
           fi
-          grep -q "ghost_uptime_apply_boot_time(&boot, now.tv_sec)" kernel/time/timekeeping.c
-          grep -q "ghost_uptime_apply_stat(inode, stat);" fs/stat.c
-          grep -q "S9_GHOST_UPTIME_L62_LINK_OBJECT" kernel/Makefile
+          grep -q "S9_GHOST_UPTIME_L63_PROC_ONLY_LINK_OBJECT" kernel/Makefile
           grep -q "ghost_uptime_apply_proc_uptime_pair(&uptime, &idle);" fs/proc/uptime.c
           grep -q "ghost_uptime_apply_sysinfo(info);" kernel/sys.c
-          grep -q "S9_GHOST_UPTIME_SYSINFO_PROTO_L62" kernel/sys.c
+          grep -q "S9_GHOST_UPTIME_SYSINFO_PROTO_L63" kernel/sys.c
           grep -q "ghost_uptime_apply_proc_btime64(&boottime);" fs/proc/stat.c
-          cp -f s9-ghost-uptime-l62-report.txt ../s9-ghost-uptime-l62-report.txt
+          cp -f s9-ghost-uptime-l63-report.txt ../s9-ghost-uptime-l63-report.txt
+          cp -f s9-ghost-uptime-l63-report.txt ../s9-ghost-uptime-l62-report.txt
 
       - name: Disable CLOCK_BOOTTIME user surface patch for WiFi recovery L62
         shell: bash
@@ -2365,10 +2266,11 @@ jobs:
           set -euo pipefail
           echo "===== DISABLE CLOCK_BOOTTIME USER SURFACE PATCH FOR WIFI RECOVERY L62 ====="
           cat > s9-boottime-surface-l62-report.txt <<'EOF'
-          v90 WiFi recovery mode: CLOCK_BOOTTIME user-surface patch is fully skipped.
+          v91 WiFi recovery mode: CLOCK_BOOTTIME user-surface patch is fully skipped.
           No posix_get_boottime hook, no posix-stubs hook, no ghost_uptime_apply_boottime_ts symbols.
-          Reason: v89 still patched kernel/time/posix-timers.c and kernel/time/posix-stubs.c; WiFi still failed on PixelExp/AOSP Android 12.
-          Expected: Android nowELAPSED/CLOCK_BOOTTIME stays stock-real; /proc/uptime, /proc/stat btime, sysinfo and selected stat surfaces remain ghosted.
+          No timekeeping_init boot_time shift and no generic_fillattr/stat timestamp patch.
+          Vendor mode is Android Q/10 even though system ROM is Android 12, because S9 Pixel Experience uses Samsung Q vendor blobs.
+          Expected: Android nowELAPSED/CLOCK_BOOTTIME and WiFi HAL timing stay stock-real; /proc/uptime, /proc/stat btime and sysinfo remain ghosted.
           EOF
           sed -i 's/^          //' s9-boottime-surface-l62-report.txt
           cat s9-boottime-surface-l62-report.txt
@@ -2382,8 +2284,8 @@ jobs:
           cp -f s9-boottime-surface-l62-report.txt ../s9-boottime-surface-l62-report.txt
 
           echo "===== WIFI RECOVERY MODE =====" | tee s9-wifi-safe-l62-report.txt
-          echo "v90 disables every CLOCK_BOOTTIME user-surface uptime hook; only proc/sysinfo/stat ghosting remains." | tee -a s9-wifi-safe-l62-report.txt
-          echo "This is a WiFi-first rollback from v89 while keeping KernelSU Next + SuSFS." | tee -a s9-wifi-safe-l62-report.txt
+          echo "v91 disables every CLOCK_BOOTTIME/timekeeping/stat timestamp hook; only proc/sysinfo uptime ghosting remains." | tee -a s9-wifi-safe-l62-report.txt
+          echo "This is a WiFi-first Vendor-Q rollback while keeping KernelSU Next + SuSFS." | tee -a s9-wifi-safe-l62-report.txt
           cp -f s9-wifi-safe-l62-report.txt ../s9-wifi-safe-l62-report.txt
 
       - name: Prepare defconfig
@@ -2412,7 +2314,7 @@ jobs:
             cp -f "$DEVICE_CONFIG" "$TEMP_CONFIG"
           fi
 
-          printf '\n# GitHub Actions target: %s %s Pixel Experience Android 12 S\n' "$DEVICE" "$MODEL_NAME" >> "$TEMP_CONFIG"
+          printf '\n# GitHub Actions target: %s %s Pixel Experience Android 12 with Samsung Q vendor\n' "$DEVICE" "$MODEL_NAME" >> "$TEMP_CONFIG"
 
           cat >> "$TEMP_CONFIG" <<'EOF'
 
@@ -2629,7 +2531,7 @@ jobs:
           ls -lah arch/arm64/boot || true
           find arch/arm64/boot -maxdepth 8 -type f \( -name "Image*" -o -name "*.dtb" -o -name "dtb.img" -o -name "*.ko" \) -print -exec ls -lh {} \; || true
 
-      - name: Build v90 clock surface diagnostic probe
+      - name: Build v91 clock and WiFi diagnostic probe
         shell: bash
         working-directory: kernel
         run: |
@@ -2638,7 +2540,7 @@ jobs:
           OUT_DIR="$GITHUB_WORKSPACE/out"
           mkdir -p "$OUT_DIR"
 
-          cat > "$OUT_DIR/v90-clock-probe.c" <<'EOF_CPROBE'
+          cat > "$OUT_DIR/v91-clock-probe.c" <<'EOF_CPROBE'
           #define _GNU_SOURCE
           #include <errno.h>
           #include <stdio.h>
@@ -2682,7 +2584,7 @@ jobs:
           }
 
           int main(void) {
-              printf("===== V90 native clock surface probe =====\n");
+              printf("===== V91 native clock surface probe =====\n");
               printf("pid=%ld uid=%ld\n", (long)getpid(), (long)getuid());
               printf("CLOCK ids: REALTIME=%d MONOTONIC=%d MONOTONIC_RAW=%d BOOTTIME=%d\n",
                      CLOCK_REALTIME, CLOCK_MONOTONIC, CLOCK_MONOTONIC_RAW, CLOCK_BOOTTIME);
@@ -2703,26 +2605,20 @@ jobs:
                   memset(&si, 0, sizeof(si));
                   if (sysinfo(&si) != 0) si.uptime = -1;
 
-                  double rt_s = ts_sec(rt);
-                  double mono_s = ts_sec(mono);
-                  double raw_s = ts_sec(raw);
-                  double boot_s = ts_sec(boot);
-
                   printf("\n--- sample %d ---\n", i + 1);
-                  printf("CLOCK_REALTIME      %.9f\n", rt_s);
-                  printf("CLOCK_MONOTONIC     %.9f\n", mono_s);
-                  printf("CLOCK_MONOTONIC_RAW %.9f\n", raw_s);
-                  printf("CLOCK_BOOTTIME      %.9f\n", boot_s);
+                  printf("CLOCK_REALTIME      %.9f\n", ts_sec(rt));
+                  printf("CLOCK_MONOTONIC     %.9f\n", ts_sec(mono));
+                  printf("CLOCK_MONOTONIC_RAW %.9f\n", ts_sec(raw));
+                  printf("CLOCK_BOOTTIME      %.9f\n", ts_sec(boot));
                   printf("sysinfo.uptime      %ld\n", (long)si.uptime);
                   printf("/proc/uptime        %.2f %.2f\n", proc_up, idle);
                   printf("/proc/stat btime    %lld\n", btime);
                   printf("time(NULL)          %lld\n", (long long)now);
                   printf("date_minus_btime    %lld\n", btime > 0 ? (long long)now - btime : -1LL);
-                  printf("diff proc-boot      %.6f\n", proc_up - boot_s);
-                  printf("diff proc-mono      %.6f\n", proc_up - mono_s);
-                  printf("diff boot-mono      %.6f\n", boot_s - mono_s);
-                  printf("diff mono-raw       %.6f\n", mono_s - raw_s);
-                  printf("diff sysinfo-boot   %.6f\n", (double)si.uptime - boot_s);
+                  printf("diff proc-boot      %.6f\n", proc_up - ts_sec(boot));
+                  printf("diff proc-mono      %.6f\n", proc_up - ts_sec(mono));
+                  printf("diff boot-mono      %.6f\n", ts_sec(boot) - ts_sec(mono));
+                  printf("diff sysinfo-boot   %.6f\n", (double)si.uptime - ts_sec(boot));
                   printf("clock_errors_or     %d errno=%d(%s)\n", er, errno, strerror(errno));
                   fflush(stdout);
                   sleep(1);
@@ -2731,51 +2627,126 @@ jobs:
           }
           EOF_CPROBE
 
-          sed -i 's/^          //' "$OUT_DIR/v90-clock-probe.c"
+          sed -i 's/^          //' "$OUT_DIR/v91-clock-probe.c"
 
-          echo "===== BUILD ARM64 CLOCK PROBE ROBUST L62 ====="
-          PROBE_LOG="$OUT_DIR/v90-clock-probe-build.log"
+          echo "===== BUILD ARM64 CLOCK PROBE V91 ====="
+          PROBE_LOG="$OUT_DIR/v91-clock-probe-build.log"
           : > "$PROBE_LOG"
-
           set +e
-          echo "[TRY] aarch64-linux-gnu-gcc static + -lrt" | tee -a "$PROBE_LOG"
-          aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v90-clock-probe.c" -o "$OUT_DIR/v90-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
+          aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v91-clock-probe.c" -o "$OUT_DIR/v91-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
           RC=$?
-
           if [ "$RC" -ne 0 ]; then
-            echo "[TRY] aarch64-linux-gnu-gcc dynamic + -lrt" | tee -a "$PROBE_LOG"
-            aarch64-linux-gnu-gcc -O2 -Wall -Wextra "$OUT_DIR/v90-clock-probe.c" -o "$OUT_DIR/v90-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
+            aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v91-clock-probe.c" -o "$OUT_DIR/v91-clock-probe-arm64" >> "$PROBE_LOG" 2>&1
             RC=$?
           fi
-
-          if [ "$RC" -ne 0 ]; then
-            echo "[TRY] clang target aarch64-linux-gnu with sysroot" | tee -a "$PROBE_LOG"
-            clang --target=aarch64-linux-gnu --sysroot=/usr/aarch64-linux-gnu -O2 -Wall -Wextra "$OUT_DIR/v90-clock-probe.c" -o "$OUT_DIR/v90-clock-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
-            RC=$?
-          fi
-
           set -e
-          if [ "$RC" -eq 0 ] && [ -s "$OUT_DIR/v90-clock-probe-arm64" ]; then
-            file "$OUT_DIR/v90-clock-probe-arm64" | tee -a "$PROBE_LOG"
-            chmod +x "$OUT_DIR/v90-clock-probe-arm64"
-            echo "[OK] native clock probe built" | tee -a "$PROBE_LOG"
+          if [ "$RC" -eq 0 ] && [ -s "$OUT_DIR/v91-clock-probe-arm64" ]; then
+            file "$OUT_DIR/v91-clock-probe-arm64" | tee -a "$PROBE_LOG"
+            chmod +x "$OUT_DIR/v91-clock-probe-arm64"
           else
-            echo "[WARN] native clock probe build failed; keeping kernel artifact and shell diagnostic only" | tee -a "$PROBE_LOG"
-            cat > "$OUT_DIR/v90-clock-probe-arm64.README.txt" <<'EOF_README'
+            echo "[WARN] native clock probe build failed; shell diagnostic still works" | tee -a "$PROBE_LOG"
+            cat > "$OUT_DIR/v91-clock-probe-arm64.README.txt" <<'EOF_README'
           Native clock probe did not compile on the runner.
-          Kernel build should still continue. Use v90-clock-surface-check.bat for shell/proc/dumpsys checks, or send v90-clock-probe-build.log for probe compile diagnosis.
+          Use v91-clock-surface-check.bat for shell/proc/dumpsys/WiFi checks.
           EOF_README
           fi
 
-          cat > "$OUT_DIR/v90-clock-surface-check.bat" <<'EOF_BAT'
+          cat > "$OUT_DIR/v91-clock-surface-check-device.sh" <<'EOF_SH'
+          #!/system/bin/sh
+          echo "===== V91 CLOCK/WIFI SURFACE CHECK DEVICE SH ====="
+          echo "-- identity/kernel --"
+          id
+          uname -a
+
+          echo "-- Pixel/AOSP ROM properties --"
+          getprop ro.build.fingerprint
+          getprop ro.vendor.build.fingerprint
+          getprop ro.product.system.name
+          getprop ro.product.system.device
+          getprop ro.product.vendor.device
+          getprop ro.build.version.release
+          getprop ro.build.version.sdk
+          getprop ro.boot.wificountrycode
+          getprop | grep -iE 'wifi|wlan|vendor\.wifi|bcmdhd|dhd' 2>/dev/null || true
+
+          echo "-- proc/sysinfo uptime surfaces --"
+          cat /proc/uptime
+          grep '^btime ' /proc/stat
+          date +%s
+          uptime
+
+          echo "-- Android elapsedRealtime --"
+          dumpsys alarm | grep -iE 'nowRTC|nowELAPSED|RuntimeStarted|Runtime uptime' || true
+
+          echo "-- native clock probe --"
+          if [ -x /data/local/tmp/v91-clock-probe ]; then
+            /data/local/tmp/v91-clock-probe
+          else
+            echo "Missing /data/local/tmp/v91-clock-probe"
+          fi
+
+          echo "-- WiFi service toggle --"
+          svc wifi disable
+          sleep 2
+          svc wifi enable
+          sleep 12
+          cmd wifi status 2>/dev/null || true
+          dumpsys wifi | head -180 2>/dev/null || true
+
+          echo "-- network interfaces --"
+          ls -la /sys/class/net 2>/dev/null || true
+          ip link 2>/dev/null || true
+
+          echo "-- dhd module parameters --"
+          if [ -d /sys/module/dhd/parameters ]; then
+            ls -la /sys/module/dhd/parameters
+            for p in firmware_path nvram_path clm_path info_string op_mode fw_ap_select dhd_console_ms disable_proptx; do
+              printf '%s=' "$p"
+              cat "/sys/module/dhd/parameters/$p" 2>/dev/null || true
+              echo
+            done
+          else
+            echo "missing /sys/module/dhd/parameters"
+          fi
+
+          echo "-- WiFi firmware files --"
+          for d in /vendor/etc/wifi /vendor/firmware /system/vendor/etc/wifi /odm/etc/wifi; do
+            echo "DIR:$d"
+            ls -la "$d" 2>/dev/null || true
+          done
+
+          echo "-- common Broadcom firmware names --"
+          for f in \
+            /vendor/etc/wifi/bcmdhd_sta.bin \
+            /vendor/etc/wifi/bcmdhd_sta.bin_b0 \
+            /vendor/etc/wifi/bcmdhd_sta.bin_b2 \
+            /vendor/etc/wifi/bcmdhd_clm.blob \
+            /vendor/etc/wifi/nvram_net.txt \
+            /vendor/etc/wifi/nvram.txt_murata_r041_b2 \
+            /vendor/etc/wifi/nvram.txt_r02a_b2 \
+            /vendor/etc/wifi/nvram.txt_r02b_b2; do
+            ls -la "$f" 2>/dev/null || echo "missing:$f"
+          done
+
+          echo "-- WiFi HAL/logcat recent --"
+          logcat -d -b all -v time 2>/dev/null | grep -iE 'WifiHAL|WifiVendorHal|wificond|wpa_supplicant|hostapd|dhd|bcmdhd|firmware|nvram|clm|cfg80211|wlan0|p2p0|failed|denied|avc' | tail -320 || true
+
+          echo "-- dmesg WiFi/KernelSU recent --"
+          dmesg 2>/dev/null | grep -iE 'ghost_uptime|ksud|KernelSU|dhd|bcmdhd|wifi|wlan|firmware|nvram|clm|cfg80211|denied|avc' | tail -260 || true
+          EOF_SH
+          sed -i 's/^          //' "$OUT_DIR/v91-clock-surface-check-device.sh"
+          chmod +x "$OUT_DIR/v91-clock-surface-check-device.sh"
+
+          cat > "$OUT_DIR/v91-clock-surface-check.bat" <<'EOF_BAT'
           @echo off
           setlocal EnableExtensions EnableDelayedExpansion
           set ADB=adb
           if exist "D:\platform-tools\adb.exe" set ADB=D:\platform-tools\adb.exe
-          set BIN=%~dp0v90-clock-probe-arm64
-          set LOG=%~dp0v90-clock-surface-check.log
+          set BIN=%~dp0v91-clock-probe-arm64
+          set DEVSH=%~dp0v91-clock-surface-check-device.sh
+          set LOG=%~dp0v91-clock-surface-check.log
 
-          echo ===== V90 CLOCK/WIFI SURFACE CHECK ===== > "%LOG%"
+          echo ===== V91 CLOCK/WIFI SURFACE CHECK ===== > "%LOG%"
           echo Generated at: %DATE% %TIME% >> "%LOG%"
           echo ADB: %ADB% >> "%LOG%"
           echo. >> "%LOG%"
@@ -2784,51 +2755,17 @@ jobs:
           "%ADB%" devices >> "%LOG%" 2>&1
           echo. >> "%LOG%"
 
-          echo ===== BASIC ROOT / KERNEL ===== >> "%LOG%"
-          "%ADB%" shell "su -c 'id; uname -a'" >> "%LOG%" 2>&1
-          echo. >> "%LOG%"
-
-          echo ===== PIXEL ROM PROPERTIES ===== >> "%LOG%"
-          "%ADB%" shell "getprop ro.build.fingerprint; getprop ro.product.system.name; getprop ro.product.system.device; getprop ro.product.vendor.device; getprop ro.build.version.release; getprop ro.build.version.sdk" >> "%LOG%" 2>&1
-          echo. >> "%LOG%"
-
-          echo ===== GHOST/SUSFS SYMBOLS ===== >> "%LOG%"
-          "%ADB%" shell "su -c 'cat /proc/kallsyms 2>/dev/null | grep -i ghost_uptime | head -120; cat /proc/kallsyms 2>/dev/null | grep -i susfs | head -80'" >> "%LOG%" 2>&1
-          echo. >> "%LOG%"
-
-          echo ===== PROC / SYSINFO SURFACES ===== >> "%LOG%"
-          "%ADB%" shell "su -c 'cat /proc/uptime; toybox uptime 2>/dev/null || uptime 2>/dev/null; cat /proc/stat | grep btime; date +%%s'" >> "%LOG%" 2>&1
-          echo. >> "%LOG%"
-
-          echo ===== ANDROID ELAPSEDREALTIME SURFACE ===== >> "%LOG%"
-          "%ADB%" shell "dumpsys alarm | grep -iE 'nowRTC|nowELAPSED|RuntimeStarted|Runtime uptime'" >> "%LOG%" 2>&1
-          echo. >> "%LOG%"
-
-          if not exist "%BIN%" (
-            echo WARN: Missing native probe binary: %BIN% >> "%LOG%"
-            echo Continue with shell/proc/dumpsys checks only. >> "%LOG%"
-            echo. >> "%LOG%"
+          if exist "%BIN%" (
+            "%ADB%" push "%BIN%" /data/local/tmp/v91-clock-probe >> "%LOG%" 2>&1
+            "%ADB%" shell "chmod 755 /data/local/tmp/v91-clock-probe" >> "%LOG%" 2>&1
           ) else (
-            echo ===== PUSH NATIVE CLOCK PROBE ===== >> "%LOG%"
-            "%ADB%" push "%BIN%" /data/local/tmp/v90-clock-probe >> "%LOG%" 2>&1
-            "%ADB%" shell "chmod 755 /data/local/tmp/v90-clock-probe" >> "%LOG%" 2>&1
-            echo. >> "%LOG%"
-
-            echo ===== RUN NATIVE CLOCK PROBE WITHOUT SU ===== >> "%LOG%"
-            "%ADB%" shell "/data/local/tmp/v90-clock-probe" >> "%LOG%" 2>&1
-            echo. >> "%LOG%"
-
-            echo ===== RUN NATIVE CLOCK PROBE WITH SU ===== >> "%LOG%"
-            "%ADB%" shell "su -c /data/local/tmp/v90-clock-probe" >> "%LOG%" 2>&1
-            echo. >> "%LOG%"
+            echo WARN: Missing native probe binary: %BIN% >> "%LOG%"
           )
 
-          echo ===== WIFI / HAL SURFACE CHECK V90 ===== >> "%LOG%"
-          "%ADB%" shell "su -c 'echo --- props ---; getprop | grep -iE \"wifi|wlan|vendor\\.wifi|ro\\.product|ro\\.build\\.fingerprint\"; echo --- wifi service ---; svc wifi disable; sleep 2; svc wifi enable; sleep 8; cmd wifi status 2>/dev/null || dumpsys wifi | head -120; echo --- interfaces ---; ls -la /sys/class/net; ip link 2>/dev/null; echo --- dhd module ---; ls -la /sys/module/dhd/parameters 2>/dev/null; for p in firmware_path nvram_path clm_path info_string op_mode fw_ap_select; do printf \"%%s=\" \"$p\"; cat /sys/module/dhd/parameters/$p 2>/dev/null; echo; done; echo --- wifi firmware files ---; ls -la /vendor/etc/wifi /vendor/firmware /system/vendor/etc/wifi 2>/dev/null; echo --- firmware expected common names ---; for f in /vendor/etc/wifi/bcmdhd_sta.bin /vendor/etc/wifi/bcmdhd_sta.bin_b0 /vendor/etc/wifi/bcmdhd_sta.bin_b2 /vendor/etc/wifi/nvram_net.txt /vendor/etc/wifi/nvram.txt_murata_r041_b2 /vendor/etc/wifi/bcmdhd_clm.blob; do ls -la $f 2>/dev/null || echo missing:$f; done; echo --- logcat wifi recent ---; logcat -d -b all -v time | grep -iE \"WifiHAL|WifiVendorHal|wificond|wpa_supplicant|hostapd|dhd|bcmdhd|firmware|nvram|clm|cfg80211|wlan0|p2p0|failed|denied\" | tail -260'" >> "%LOG%" 2>&1
-          echo. >> "%LOG%"
-
-          echo ===== TIMER_LIST / DMESG ===== >> "%LOG%"
-          "%ADB%" shell "su -c 'cat /proc/timer_list 2>/dev/null | head -60; dmesg | grep -iE \"ghost_uptime|ksud|KernelSU|dhd|bcmdhd|wifi|wlan|firmware|nvram|clm|cfg80211|denied\" | tail -220'" >> "%LOG%" 2>&1
+          echo ===== PUSH/RUN DEVICE DIAGNOSTIC SCRIPT ===== >> "%LOG%"
+          "%ADB%" push "%DEVSH%" /data/local/tmp/v91-clock-surface-check-device.sh >> "%LOG%" 2>&1
+          "%ADB%" shell "chmod 755 /data/local/tmp/v91-clock-surface-check-device.sh" >> "%LOG%" 2>&1
+          "%ADB%" shell "su -c /data/local/tmp/v91-clock-surface-check-device.sh" >> "%LOG%" 2>&1
           echo. >> "%LOG%"
 
           type "%LOG%"
@@ -2837,39 +2774,9 @@ jobs:
           endlocal
           EOF_BAT
 
-          sed -i 's/^          //' "$OUT_DIR/v90-clock-surface-check.bat"
+          sed -i 's/^          //' "$OUT_DIR/v91-clock-surface-check.bat"
 
-          cat > "$OUT_DIR/v90-clock-surface-check-device.sh" <<'EOF_SH'
-          #!/system/bin/sh
-          echo "===== V90 CLOCK/WIFI SURFACE CHECK DEVICE SH ====="
-          id
-          uname -a
-          echo "-- Pixel ROM properties --"
-          getprop ro.build.fingerprint
-          getprop ro.product.system.name
-          getprop ro.product.system.device
-          getprop ro.product.vendor.device
-          getprop ro.build.version.release
-          getprop ro.build.version.sdk
-          echo "-- proc uptime/stat --"
-          cat /proc/uptime
-          grep '^btime ' /proc/stat
-          date +%s
-          echo "-- Android elapsedRealtime --"
-          dumpsys alarm | grep -iE 'nowRTC|nowELAPSED|RuntimeStarted|Runtime uptime'
-          echo "-- wifi recovery diagnostics --"
-          su -c 'svc wifi disable; sleep 2; svc wifi enable; sleep 8; cmd wifi status 2>/dev/null || dumpsys wifi | head -120; echo --- net ---; ls -la /sys/class/net; ip link 2>/dev/null; echo --- dhd params ---; ls -la /sys/module/dhd/parameters 2>/dev/null; for p in firmware_path nvram_path clm_path info_string op_mode fw_ap_select; do printf "%s=" "$p"; cat /sys/module/dhd/parameters/$p 2>/dev/null; echo; done; echo --- firmware ---; ls -la /vendor/etc/wifi /vendor/firmware /system/vendor/etc/wifi 2>/dev/null; echo --- logcat wifi ---; logcat -d -b all -v time | grep -iE "WifiHAL|WifiVendorHal|wificond|wpa_supplicant|hostapd|dhd|bcmdhd|firmware|nvram|clm|cfg80211|wlan0|p2p0|failed|denied" | tail -260; echo --- dmesg wifi ---; dmesg | grep -iE "dhd|bcmdhd|wifi|wlan|firmware|nvram|clm|cfg80211|denied" | tail -220'
-          echo "-- native clock probe --"
-          if [ -x /data/local/tmp/v90-clock-probe ]; then
-            /data/local/tmp/v90-clock-probe
-          else
-            echo "Missing /data/local/tmp/v90-clock-probe"
-          fi
-          EOF_SH
-          sed -i 's/^          //' "$OUT_DIR/v90-clock-surface-check-device.sh"
-          chmod +x "$OUT_DIR/v90-clock-surface-check-device.sh"
-
-          ls -lh "$OUT_DIR"/v90-clock-*
+          ls -lh "$OUT_DIR"/v91-clock-*
 
       - name: Show useful errors
         if: failure()
@@ -2906,7 +2813,7 @@ jobs:
           } > KernelSU-config.txt
           {
             echo "===== SuSFS build info snapshot ====="
-            echo "workflow=v90-a12-ksu-susfs-wififix-l62"
+            echo "workflow=v91-q-ksu-susfs-wififix-l62"
             echo "date=$(date -u)"
             echo "DEVICE=${DEVICE:-unknown}"
             echo "MODEL_NAME=${MODEL_NAME:-unknown}"
@@ -2921,9 +2828,9 @@ jobs:
           } > SuSFS-build-info.txt
           ls -lah build.log KernelSU-config.txt SuSFS-build-info.txt || true
           {
-            echo "===== CHATGPT READABLE FAILURE LOG V90 ====="
+            echo "===== CHATGPT READABLE FAILURE LOG V91 ====="
             echo "date_utc=$(date -u)"
-            echo "workflow=v90-a12-ksu-susfs-wififix-l62"
+            echo "workflow=v91-q-ksu-susfs-wififix-l62"
             echo "repo=${GITHUB_REPOSITORY:-unknown}"
             echo "ref_to_build=${{ inputs.ref_to_build }}"
             echo "device=${DEVICE:-unknown}"
@@ -2941,17 +2848,18 @@ jobs:
             cat KernelSU-config.txt 2>/dev/null || true
             echo
             echo "===== UPTIME/SUSFS REPORTS ====="
-            cat s9-ghost-uptime-l62-report.txt 2>/dev/null || true
+            cat s9-ghost-uptime-l63-report.txt 2>/dev/null || true
+              cat s9-ghost-uptime-l62-report.txt 2>/dev/null || true
             cat s9-boottime-surface-l62-report.txt 2>/dev/null || true
             cat s9-wifi-safe-l62-report.txt 2>/dev/null || true
-          } > ChatGPT-readable-build-log-v90.txt
-          ls -lah ChatGPT-readable-build-log-v90.txt || true
+          } > ChatGPT-readable-build-log-v91.txt
+          ls -lah ChatGPT-readable-build-log-v91.txt || true
 
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v90-a12-ksu-susfs-wififix-l62
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v91-q-ksu-susfs-wififix-l62
           path: |
             kernel/*.log
             kernel/*.txt
@@ -3037,7 +2945,7 @@ jobs:
           RAW_DIR="$OUT_DIR/raw"
           AK_DIR="$GITHUB_WORKSPACE/AnyKernel3"
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
-          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-PixelExp-A12-v90-a12-ksu-susfs-wififix-l62-${SHORT_SHA}.zip"
+          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-PixelExp-A12-VendorQ-v91-q-ksu-susfs-wififix-l62-${SHORT_SHA}.zip"
 
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 "$AK_DIR"
 
@@ -3053,10 +2961,10 @@ jobs:
           printf '%s\n' \
             "### AnyKernel3 Ramdisk Mod Script" \
             "## Auto-generated for ss-S9" \
-            "## Target: Samsung Galaxy S9 ${MODEL_NAME} / ${DEVICE} / Pixel Experience Android 12" \
+            "## Target: Samsung Galaxy S9 ${MODEL_NAME} / ${DEVICE} / Pixel Experience Android 12 with Samsung Q vendor blobs" \
             "" \
             "properties() { '" \
-            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} PixelExp Android12 S v90 KernelSU Next SuSFS WiFiFix GhostUptime L62" \
+            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} PixelExp Android12 S v91 KernelSU Next SuSFS WiFiFix GhostUptime L62" \
             "do.devicecheck=1" \
             "do.modules=0" \
             "do.systemless=1" \
@@ -3109,13 +3017,13 @@ jobs:
           set +e
           OUT_DIR="$GITHUB_WORKSPACE/out"
           KERNEL_DIR="$GITHUB_WORKSPACE/kernel"
-          LOG="$OUT_DIR/chatgpt-readable-build-log-v90.txt"
+          LOG="$OUT_DIR/chatgpt-readable-build-log-v91.txt"
           mkdir -p "$OUT_DIR"
 
           {
-            echo "===== CHATGPT READABLE BUILD LOG V90 ====="
+            echo "===== CHATGPT READABLE BUILD LOG V91 ====="
             echo "date_utc=$(date -u)"
-            echo "workflow=v90-a12-ksu-susfs-wififix-l62"
+            echo "workflow=v91-q-ksu-susfs-wififix-l62"
             echo "repo=${GITHUB_REPOSITORY:-unknown}"
             echo "run=${GITHUB_RUN_ID:-unknown} attempt=${GITHUB_RUN_ATTEMPT:-unknown}"
             echo "sha=${GITHUB_SHA:-unknown}"
@@ -3134,6 +3042,7 @@ jobs:
               grep -E "CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_SUSFS|CONFIG_KSU_KPROBES_HOOK|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS|CONFIG_ANDROID" .config 2>/dev/null || true
               echo
               echo "===== GHOST UPTIME REPORT ====="
+              cat s9-ghost-uptime-l63-report.txt 2>/dev/null || true
               cat s9-ghost-uptime-l62-report.txt 2>/dev/null || true
               echo
               echo "===== BOOTTIME/WIFI SAFE REPORT ====="
@@ -3161,13 +3070,13 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v90-a12-ksu-susfs-wififix-l62
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v91-q-ksu-susfs-wififix-l62
           path: |
             out/*.zip
             out/raw/*
             out/*.log
-            out/chatgpt-readable-build-log-v90.txt
-            out/v90-clock-*
+            out/chatgpt-readable-build-log-v91.txt
+            out/v91-clock-*
             out/kernel.config
             out/modules-*
             out/KernelSU-*.txt
