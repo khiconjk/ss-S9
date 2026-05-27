@@ -1,4 +1,4 @@
-name: v103 S9 PixelExp A12 Vendor-Q KSU Next SuSFS Random Uptime 15-20d CLOCK_BOOTTIME VDSO + WiFi PCIe Stable
+name: v104 S9 PixelExp A12 Vendor-Q KSU Next SuSFS Random Uptime 15-20d CLOCK_BOOTTIME VDSO + WiFi PCIe Stable
 
 "on":
   workflow_dispatch:
@@ -193,7 +193,7 @@ jobs:
           echo "Clean done" | tee -a clean.log
 
 
-      - name: Patch kernel release to G960NK v103 PixelExp A12 KSU Next + SuSFS RandomUptime BOOTTIME VDSO 15-20d
+      - name: Patch kernel release to G960NK v104 PixelExp A12 KSU Next + SuSFS RandomUptime BOOTTIME VDSO 15-20d
         shell: bash
         working-directory: kernel
         run: |
@@ -212,9 +212,9 @@ jobs:
           text = re.sub(r"^SUBLEVEL\s*=\s*.*$", "SUBLEVEL = 220", text, flags=re.MULTILINE)
 
           if re.search(r"^EXTRAVERSION\s*=", text, flags=re.MULTILINE):
-              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v103-q-ksu-susfs-rup", text, flags=re.MULTILINE)
+              text = re.sub(r"^EXTRAVERSION\s*=\s*.*$", "EXTRAVERSION = -G960NK-v104-q-ksu-susfs-rup", text, flags=re.MULTILINE)
           else:
-              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v103-q-ksu-susfs-rup", 1)
+              text = text.replace("SUBLEVEL = 220", "SUBLEVEL = 220\nEXTRAVERSION = -G960NK-v104-q-ksu-susfs-rup", 1)
 
           makefile.write_text(text)
           PY
@@ -222,8 +222,8 @@ jobs:
           echo "===== AFTER VERSION PATCH ====="
           grep -nE "^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)[[:space:]]*=" Makefile || true
 
-          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v103-q-ksu-susfs-rup"
-          RELEASE_LEN=$(printf "%s" "4.9.220-G960NK-v103-q-ksu-susfs-rup" | wc -c)
+          echo "Expected UTS_RELEASE prefix: 4.9.220-G960NK-v104-q-ksu-susfs-rup"
+          RELEASE_LEN=$(printf "%s" "4.9.220-G960NK-v104-q-ksu-susfs-rup" | wc -c)
           echo "UTS_RELEASE length=$RELEASE_LEN / 64"
           if [ "$RELEASE_LEN" -gt 64 ]; then
             echo "ERROR: UTS_RELEASE exceeds Linux 64-character limit"
@@ -1719,7 +1719,7 @@ jobs:
             echo "Device: ${DEVICE}"
             echo "Model: ${MODEL_NAME}"
             echo "Android: ${PLATFORM_VERSION}/${ANDROID_MAJOR_VERSION}"
-            echo "Kernel release target: 4.9.220-G960NK-v103-q-ksu-susfs-rup"
+            echo "Kernel release target: 4.9.220-G960NK-v104-q-ksu-susfs-rup"
             echo ""
           } > ksu-next-build-info.txt
 
@@ -1962,21 +1962,21 @@ jobs:
 
           echo "SipHash weak compat link fix L62 completed" | tee -a "$LOG"
 
-      - name: Apply S9 random uptime 15-20 days guarded BOOTTIME syscall/VDSO fallback patch v103
+      - name: Apply S9 random uptime 15-20 days guarded BOOTTIME syscall/VDSO fallback patch v104
         shell: bash
         working-directory: kernel
         run: |
           set -euo pipefail
 
-          LOG="uptime-v103-apply.log"
-          REPORT="s9-random-uptime-v103-report.txt"
-          SAFE_REPORT="s9-wifi-safe-v103-report.txt"
+          LOG="uptime-v104-apply.log"
+          REPORT="s9-random-uptime-v104-report.txt"
+          SAFE_REPORT="s9-wifi-safe-v104-report.txt"
           : > "$LOG"
           : > "$REPORT"
           : > "$SAFE_REPORT"
 
-          echo "===== APPLY S9 RANDOM UPTIME 15-20 DAYS GUARDED BOOTTIME PATCH V103 ====="
-          echo "Design: keep v99 WiFi stable; v102 proved /proc fake but Android elapsed was not fake and WiFi framework recovered. v103 disables VDSO BOOTTIME fast path and routes CLOCK_BOOTTIME to guarded syscall, excluding WiFi/native daemons." | tee -a "$LOG"
+          echo "===== APPLY S9 RANDOM UPTIME 15-20 DAYS GUARDED BOOTTIME PATCH V104 ====="
+          echo "Design: keep v99 WiFi stable; v102 proved /proc fake but Android elapsed was not fake and WiFi framework recovered. v104 disables VDSO BOOTTIME fast path and routes CLOCK_BOOTTIME to guarded syscall, excluding WiFi/native daemons." | tee -a "$LOG"
 
           DAYS=$((15 + RANDOM % 6))
           SECS=$((DAYS * 86400))
@@ -1986,14 +1986,14 @@ jobs:
           echo "selected_ns=${NS}" | tee -a "$LOG"
 
           mkdir -p scripts
-          cat > scripts/ci_apply_s9_random_uptime_v103.py <<'PY'
+          cat > scripts/ci_apply_s9_random_uptime_v104.py <<'PY'
           from pathlib import Path
           import os, re, sys, traceback
 
           ROOT = Path('.')
           DAYS = int(os.environ.get('DAYS', '15'))
           SECS = DAYS * 86400
-          HEADER = ROOT / 'include/linux/s9_random_uptime_v103.h'
+          HEADER = ROOT / 'include/linux/s9_random_uptime_v104.h'
           PROC_UPTIME = ROOT / 'fs/proc/uptime.c'
           PROC_STAT = ROOT / 'fs/proc/stat.c'
           KERNEL_SYS = ROOT / 'kernel/sys.c'
@@ -2001,9 +2001,9 @@ jobs:
           ALARM = ROOT / 'drivers/staging/android/alarm-dev.c'
           VDSO_KERNEL = ROOT / 'arch/arm64/kernel/vdso.c'
           VGETTIME = ROOT / 'arch/arm64/kernel/vdso/vgettimeofday.c'
-          REPORT = ROOT / 's9-random-uptime-v103-report.txt'
-          SAFE_REPORT = ROOT / 's9-wifi-safe-v103-report.txt'
-          LOG = ROOT / 'uptime-v103-apply.log'
+          REPORT = ROOT / 's9-random-uptime-v104-report.txt'
+          SAFE_REPORT = ROOT / 's9-wifi-safe-v104-report.txt'
+          LOG = ROOT / 'uptime-v104-apply.log'
           notes = []
 
           def log(msg):
@@ -2075,7 +2075,7 @@ jobs:
                   notes.append('vdso_user_fallback:missing_vgettimeofday')
                   return
               s = remove_old_uptime_blocks(read(VGETTIME))
-              if 'S9_RANDOM_UPTIME_VDSO_FALLBACK_V103_START' in s:
+              if 'S9_RANDOM_UPTIME_VDSO_FALLBACK_V104_START' in s:
                   write(VGETTIME, s)
                   notes.append('vdso_user_fallback:already')
                   return
@@ -2085,9 +2085,9 @@ jobs:
                   return
               patterns = [
                   (r'(case\s+CLOCK_BOOTTIME\s*:\s*)\n\s*do_boottime\s*\(\s*&?\w+\s*\)\s*;\s*\n\s*break\s*;',
-                   r'\1\n\t\t/* S9_RANDOM_UPTIME_VDSO_FALLBACK_V103_START: route BOOTTIME to guarded syscall */\n\t\treturn clock_gettime_fallback(clock, ts);\n\t\t/* S9_RANDOM_UPTIME_VDSO_FALLBACK_V103_END */'),
+                   r'\1\n\t\t/* S9_RANDOM_UPTIME_VDSO_FALLBACK_V104_START: route BOOTTIME to guarded syscall */\n\t\treturn clock_gettime_fallback(clock, ts);\n\t\t/* S9_RANDOM_UPTIME_VDSO_FALLBACK_V104_END */'),
                   (r'(case\s+CLOCK_BOOTTIME\s*:\s*)\n\s*do_monotonic\s*\([^;]+;\s*\n\s*monotonic_to_bootbased\s*\([^;]+;\s*\n\s*break\s*;',
-                   r'\1\n\t\t/* S9_RANDOM_UPTIME_VDSO_FALLBACK_V103_START: route BOOTTIME to guarded syscall */\n\t\treturn clock_gettime_fallback(clock, ts);\n\t\t/* S9_RANDOM_UPTIME_VDSO_FALLBACK_V103_END */'),
+                   r'\1\n\t\t/* S9_RANDOM_UPTIME_VDSO_FALLBACK_V104_START: route BOOTTIME to guarded syscall */\n\t\treturn clock_gettime_fallback(clock, ts);\n\t\t/* S9_RANDOM_UPTIME_VDSO_FALLBACK_V104_END */'),
               ]
               changed = False
               for pat, rep in patterns:
@@ -2101,8 +2101,8 @@ jobs:
 
           try:
               HEADER.parent.mkdir(parents=True, exist_ok=True)
-              HEADER.write_text(f'''#ifndef _LINUX_S9_RANDOM_UPTIME_V103_H
-          #define _LINUX_S9_RANDOM_UPTIME_V103_H
+              HEADER.write_text(f'''#ifndef _LINUX_S9_RANDOM_UPTIME_V104_H
+          #define _LINUX_S9_RANDOM_UPTIME_V104_H
 
           #include <linux/types.h>
           #include <linux/time.h>
@@ -2111,15 +2111,15 @@ jobs:
           #include <linux/sched.h>
           #include <linux/string.h>
 
-          #define S9_RANDOM_UPTIME_V103_SELECTED_DAYS {DAYS}ULL
-          #define S9_RANDOM_UPTIME_V103_OFFSET_SECS (S9_RANDOM_UPTIME_V103_SELECTED_DAYS * 86400ULL)
+          #define S9_RANDOM_UPTIME_V104_SELECTED_DAYS {DAYS}ULL
+          #define S9_RANDOM_UPTIME_V104_OFFSET_SECS (S9_RANDOM_UPTIME_V104_SELECTED_DAYS * 86400ULL)
 
-          static inline unsigned long s9_random_uptime_v103_offset_secs(void)
+          static inline unsigned long s9_random_uptime_v104_offset_secs(void)
           {{
-          \treturn (unsigned long)S9_RANDOM_UPTIME_V103_OFFSET_SECS;
+          \treturn (unsigned long)S9_RANDOM_UPTIME_V104_OFFSET_SECS;
           }}
 
-          static inline bool s9_random_uptime_v103_should_fake_current(void)
+          static inline bool s9_random_uptime_v104_should_fake_current(void)
           {{
           \tconst char *c = current->comm;
           \tif (!c)
@@ -2129,73 +2129,90 @@ jobs:
           \treturn true;
           }}
 
-          static inline void s9_random_uptime_v103_apply_timespec_guarded(struct timespec *ts)
+          static inline void s9_random_uptime_v104_apply_timespec_guarded(struct timespec *ts)
           {{
-          \tif (ts && s9_random_uptime_v103_should_fake_current())
-          \t\tts->tv_sec += (long)S9_RANDOM_UPTIME_V103_OFFSET_SECS;
+          \tif (ts && s9_random_uptime_v104_should_fake_current())
+          \t\tts->tv_sec += (long)S9_RANDOM_UPTIME_V104_OFFSET_SECS;
           }}
 
-          static inline void s9_random_uptime_v103_apply_timespec(struct timespec *ts)
+          static inline void s9_random_uptime_v104_apply_timespec(struct timespec *ts)
           {{
           \tif (ts)
-          \t\tts->tv_sec += (long)S9_RANDOM_UPTIME_V103_OFFSET_SECS;
+          \t\tts->tv_sec += (long)S9_RANDOM_UPTIME_V104_OFFSET_SECS;
           }}
 
-          static inline void s9_random_uptime_v103_apply_btime64(struct timespec64 *boot_time)
+          static inline void s9_random_uptime_v104_apply_btime64(struct timespec64 *boot_time)
           {{
           \tif (!boot_time)
           \t\treturn;
-          \tif (boot_time->tv_sec > (time64_t)S9_RANDOM_UPTIME_V103_OFFSET_SECS)
-          \t\tboot_time->tv_sec -= (time64_t)S9_RANDOM_UPTIME_V103_OFFSET_SECS;
+          \tif (boot_time->tv_sec > (time64_t)S9_RANDOM_UPTIME_V104_OFFSET_SECS)
+          \t\tboot_time->tv_sec -= (time64_t)S9_RANDOM_UPTIME_V104_OFFSET_SECS;
           \telse
           \t\tboot_time->tv_sec = 0;
           }}
 
-          #endif /* _LINUX_S9_RANDOM_UPTIME_V103_H */
+          #endif /* _LINUX_S9_RANDOM_UPTIME_V104_H */
           ''')
 
-              txt = add_include_once(remove_old_uptime_blocks(read(PROC_UPTIME)), '#include <linux/s9_random_uptime_v103.h>')
+              txt = add_include_once(remove_old_uptime_blocks(read(PROC_UPTIME)), '#include <linux/s9_random_uptime_v104.h>')
               write(PROC_UPTIME, txt)
-              insert_after_once(PROC_UPTIME, 'get_monotonic_boottime(&uptime);', '\n\t/* S9_RANDOM_UPTIME_PROC_V103_START */\n\ts9_random_uptime_v103_apply_timespec(&uptime);\n\t/* S9_RANDOM_UPTIME_PROC_V103_END */', 'S9_RANDOM_UPTIME_PROC_V103_START', 'proc_uptime')
+              insert_after_once(PROC_UPTIME, 'get_monotonic_boottime(&uptime);', '\n\t/* S9_RANDOM_UPTIME_PROC_V104_START */\n\ts9_random_uptime_v104_apply_timespec(&uptime);\n\t/* S9_RANDOM_UPTIME_PROC_V104_END */', 'S9_RANDOM_UPTIME_PROC_V104_START', 'proc_uptime')
 
-              txt = add_include_once(remove_old_uptime_blocks(read(PROC_STAT)), '#include <linux/s9_random_uptime_v103.h>')
+              txt = add_include_once(remove_old_uptime_blocks(read(PROC_STAT)), '#include <linux/s9_random_uptime_v104.h>')
               write(PROC_STAT, txt)
-              insert_after_once(PROC_STAT, 'getboottime64(&boottime);', '\n\t/* S9_RANDOM_UPTIME_PROC_V103_START */\n\ts9_random_uptime_v103_apply_btime64(&boottime);\n\t/* S9_RANDOM_UPTIME_PROC_V103_END */', 'S9_RANDOM_UPTIME_PROC_V103_START', 'proc_stat_btime')
+              insert_after_once(PROC_STAT, 'getboottime64(&boottime);', '\n\t/* S9_RANDOM_UPTIME_PROC_V104_START */\n\ts9_random_uptime_v104_apply_btime64(&boottime);\n\t/* S9_RANDOM_UPTIME_PROC_V104_END */', 'S9_RANDOM_UPTIME_PROC_V104_START', 'proc_stat_btime')
 
               sys_txt = remove_old_uptime_blocks(read(KERNEL_SYS))
-              if 'S9_RANDOM_UPTIME_SYSINFO_V103' not in sys_txt:
-                  anchor = 'info->uptime = uptime.tv_sec + (uptime.tv_nsec ? 1 : 0);'
-                  if anchor not in sys_txt:
-                      die('sysinfo uptime assignment anchor not found')
-                  sys_txt = sys_txt.replace(anchor, anchor + f'\n\t/* S9_RANDOM_UPTIME_SYSINFO_V103_START */\n\tinfo->uptime += {SECS}L; /* S9_RANDOM_UPTIME_SYSINFO_V103 */\n\t/* S9_RANDOM_UPTIME_SYSINFO_V103_END */', 1)
-                  notes.append('sysinfo_direct_literal:patched')
+              if 'S9_RANDOM_UPTIME_SYSINFO_V104' not in sys_txt:
+                  # v103 failed here on some ss-S9 trees because the exact sysinfo assignment text differs.
+                  # v104 makes sysinfo a best-effort readout surface: patch if an assignment anchor is found,
+                  # otherwise skip it instead of failing before .config/build.
+                  anchors = [
+                      'info->uptime = uptime.tv_sec + (uptime.tv_nsec ? 1 : 0);',
+                      'info->uptime = uptime.tv_sec;',
+                  ]
+                  patched_sysinfo = False
+                  for anchor in anchors:
+                      if anchor in sys_txt:
+                          sys_txt = sys_txt.replace(anchor, anchor + f'\n\t/* S9_RANDOM_UPTIME_SYSINFO_V104_START */\n\tinfo->uptime += {SECS}L; /* S9_RANDOM_UPTIME_SYSINFO_V104 */\n\t/* S9_RANDOM_UPTIME_SYSINFO_V104_END */', 1)
+                          notes.append('sysinfo_direct_literal:patched_anchor')
+                          patched_sysinfo = True
+                          break
+                  if not patched_sysinfo:
+                      m = re.search(r'^\s*info->uptime\s*=\s*[^;]+;\s*$', sys_txt, flags=re.M)
+                      if m:
+                          pos = m.end()
+                          sys_txt = sys_txt[:pos] + f'\n\t/* S9_RANDOM_UPTIME_SYSINFO_V104_START */\n\tinfo->uptime += {SECS}L; /* S9_RANDOM_UPTIME_SYSINFO_V104 */\n\t/* S9_RANDOM_UPTIME_SYSINFO_V104_END */' + sys_txt[pos:]
+                          notes.append('sysinfo_direct_literal:patched_regex')
+                          patched_sysinfo = True
+                  if not patched_sysinfo:
+                      notes.append('sysinfo_direct_literal:skipped_anchor_not_found')
               write(KERNEL_SYS, sys_txt)
 
-              txt = add_include_once(remove_old_uptime_blocks(read(POSIX)), '#include <linux/s9_random_uptime_v103.h>')
+              txt = add_include_once(remove_old_uptime_blocks(read(POSIX)), '#include <linux/s9_random_uptime_v104.h>')
               write(POSIX, txt)
-              patch_in_function(POSIX, 'posix_get_boottime', 'get_monotonic_boottime(tp);', ' /* S9_RANDOM_UPTIME_POSIX_V103_START */ s9_random_uptime_v103_apply_timespec_guarded(tp); /* S9_RANDOM_UPTIME_POSIX_V103_END */', 'S9_RANDOM_UPTIME_POSIX_V103_START', 'posix_clock_boottime_guarded_syscall')
+              patch_in_function(POSIX, 'posix_get_boottime', 'get_monotonic_boottime(tp);', ' /* S9_RANDOM_UPTIME_POSIX_V104_START */ s9_random_uptime_v104_apply_timespec_guarded(tp); /* S9_RANDOM_UPTIME_POSIX_V104_END */', 'S9_RANDOM_UPTIME_POSIX_V104_START', 'posix_clock_boottime_guarded_syscall')
 
               if ALARM.exists():
-                  txt = add_include_once(remove_old_uptime_blocks(read(ALARM)), '#include <linux/s9_random_uptime_v103.h>')
+                  txt = add_include_once(remove_old_uptime_blocks(read(ALARM)), '#include <linux/s9_random_uptime_v104.h>')
                   write(ALARM, txt)
                   try:
-                      patch_in_function(ALARM, 'alarm_get_time', 'get_monotonic_boottime(ts);', ' /* S9_RANDOM_UPTIME_ALARM_V103_START */ s9_random_uptime_v103_apply_timespec_guarded(ts); /* S9_RANDOM_UPTIME_ALARM_V103_END */', 'S9_RANDOM_UPTIME_ALARM_V103_START', 'android_alarm_get_time_guarded')
+                      patch_in_function(ALARM, 'alarm_get_time', 'get_monotonic_boottime(ts);', ' /* S9_RANDOM_UPTIME_ALARM_V104_START */ s9_random_uptime_v104_apply_timespec_guarded(ts); /* S9_RANDOM_UPTIME_ALARM_V104_END */', 'S9_RANDOM_UPTIME_ALARM_V104_START', 'android_alarm_get_time_guarded')
                   except SystemExit:
                       notes.append('android_alarm_get_time_guarded:anchor_miss')
 
               if VDSO_KERNEL.exists():
                   txt = remove_old_uptime_blocks(read(VDSO_KERNEL))
-                  txt = re.sub(r'^#include\s+<linux/s9_random_uptime_v103\.h>\n', '', txt, flags=re.M)
+                  txt = re.sub(r'^#include\s+<linux/s9_random_uptime_v104\.h>\n', '', txt, flags=re.M)
                   write(VDSO_KERNEL, txt)
-                  notes.append('vdso_kernel_btm_data:not_patched_v103')
+                  notes.append('vdso_kernel_btm_data:not_patched_v104')
 
               patch_vdso_fallback()
 
               checks = {
-                  'proc uptime marker': 's9_random_uptime_v103_apply_timespec(&uptime)',
-                  'proc stat btime marker': 's9_random_uptime_v103_apply_btime64(&boottime)',
-                  'sysinfo literal marker': 'S9_RANDOM_UPTIME_SYSINFO_V103',
-                  'posix guarded marker': 's9_random_uptime_v103_apply_timespec_guarded(tp)',
+                  'proc uptime marker': 's9_random_uptime_v104_apply_timespec(&uptime)',
+                  'proc stat btime marker': 's9_random_uptime_v104_apply_btime64(&boottime)',
+                  'posix guarded marker': 's9_random_uptime_v104_apply_timespec_guarded(tp)',
               }
               joined = '\n'.join([read(p) for p in [PROC_UPTIME, PROC_STAT, KERNEL_SYS, POSIX] if p.exists()])
               for label, needle in checks.items():
@@ -2211,17 +2228,17 @@ jobs:
                               die(f'dangerous old uptime marker found in {p}: {d}')
 
               REPORT.write_text('\n'.join([
-                  'S9 random uptime v103 guarded BOOTTIME syscall/VDSO-fallback patch',
+                  'S9 random uptime v104 guarded BOOTTIME syscall/VDSO-fallback patch',
                   'status=patched',
                   'range_days=15..20',
                   f'selected_days={DAYS}',
                   f'selected_seconds={SECS}',
                   f'selected_ns={SECS * 1000000000}',
-                  'why_v103=v102 built and /proc uptime was fake, but Android elapsedRealtime remained real and WiFi framework recovery disabled WiFi after several minutes',
+                  'why_v104=v103 failed before build because kernel/sys.c sysinfo anchor differed; v104 makes sysinfo best-effort and keeps the guarded BOOTTIME/VDSO fallback design',
                   'design=keep v99 WiFi stable; do not patch global tk->offs_boot; do not patch CLOCK_MONOTONIC; do not mutate global kernel VDSO btm data',
                   'surface_proc_uptime=/proc/uptime first field',
                   'surface_proc_stat_btime=/proc/stat btime shifted backward',
-                  'surface_sysinfo=sysinfo(2) uptime via direct literal offset',
+                  'surface_sysinfo=sysinfo(2) uptime best-effort; skipped if kernel/sys.c anchor differs',
                   'surface_posix=CLOCK_BOOTTIME syscall path guarded by current->comm excluding WiFi/native daemons',
                   'surface_vdso=attempt to route CLOCK_BOOTTIME vDSO fast path to syscall fallback so guard can apply',
                   'surface_android_alarm=legacy /dev/alarm GET_TIME guarded by current->comm',
@@ -2231,12 +2248,12 @@ jobs:
               ] + ['note=' + n for n in notes]) + '\n')
 
               SAFE_REPORT.write_text('\n'.join([
-                  '===== WIFI/BOOTTIME SAFE MODE V103 =====',
-                  'v103 keeps WiFi v99 runtime-D3 block unchanged.',
-                  'v103 avoids v102 global VDSO btm data offset because v102 did not fake Android elapsedRealtime and WiFi was disabled by framework recovery.',
-                  'v103 tries to disable CLOCK_BOOTTIME vDSO fast path and use guarded syscall fallback when source anchors are found.',
-                  'v103 excludes WiFi/native networking process names from fake BOOTTIME in syscall/alarm paths.',
-                  'v103 does NOT patch WiFi framework, wificond, vendor HAL, DHCP, SSID, hrtimer_start/cancel, CLOCK_MONOTONIC, CLOCK_REALTIME, or clocksource delta.',
+                  '===== WIFI/BOOTTIME SAFE MODE V104 =====',
+                  'v104 keeps WiFi v99 runtime-D3 block unchanged.',
+                  'v104 avoids v102 global VDSO btm data offset because v102 did not fake Android elapsedRealtime and WiFi was disabled by framework recovery.',
+                  'v104 tries to disable CLOCK_BOOTTIME vDSO fast path and use guarded syscall fallback when source anchors are found; sysinfo is best-effort only.',
+                  'v104 excludes WiFi/native networking process names from fake BOOTTIME in syscall/alarm paths.',
+                  'v104 does NOT patch WiFi framework, wificond, vendor HAL, DHCP, SSID, hrtimer_start/cancel, CLOCK_MONOTONIC, CLOCK_REALTIME, or clocksource delta.',
                   f'Selected random uptime days: {DAYS}',
               ]) + '\n')
               print(REPORT.read_text())
@@ -2245,26 +2262,26 @@ jobs:
               raise
           except Exception as exc:
               tb = traceback.format_exc()
-              REPORT.write_text('S9 random uptime v103 patch status: failed\nexception=' + repr(exc) + '\ntraceback=' + tb.replace('\n','\\n') + '\n')
+              REPORT.write_text('S9 random uptime v104 patch status: failed\nexception=' + repr(exc) + '\ntraceback=' + tb.replace('\n','\\n') + '\n')
               print(tb, file=sys.stderr)
               raise
           PY
 
-          DAYS="$DAYS" python3 scripts/ci_apply_s9_random_uptime_v103.py
+          DAYS="$DAYS" python3 scripts/ci_apply_s9_random_uptime_v104.py
 
-          echo "===== VERIFY S9 RANDOM UPTIME V103 ====="
-          cat s9-random-uptime-v103-report.txt
-          echo "===== V103 PATCH MARKERS =====" | tee -a s9-wifi-safe-v103-report.txt
-          grep -RniE "S9_RANDOM_UPTIME_V103|s9_random_uptime_v103" include/linux/s9_random_uptime_v103.h fs/proc/uptime.c fs/proc/stat.c kernel/sys.c kernel/time/posix-timers.c drivers/staging/android/alarm-dev.c arch/arm64/kernel/vdso.c arch/arm64/kernel/vdso/vgettimeofday.c 2>/dev/null | tee -a s9-wifi-safe-v103-report.txt || true
-          echo "===== OLD UPTIME PATCH SAFETY CHECK =====" | tee -a s9-wifi-safe-v103-report.txt
+          echo "===== VERIFY S9 RANDOM UPTIME V104 ====="
+          cat s9-random-uptime-v104-report.txt
+          echo "===== V104 PATCH MARKERS =====" | tee -a s9-wifi-safe-v104-report.txt
+          grep -RniE "S9_RANDOM_UPTIME_V104|s9_random_uptime_v104" include/linux/s9_random_uptime_v104.h fs/proc/uptime.c fs/proc/stat.c kernel/sys.c kernel/time/posix-timers.c drivers/staging/android/alarm-dev.c arch/arm64/kernel/vdso.c arch/arm64/kernel/vdso/vgettimeofday.c 2>/dev/null | tee -a s9-wifi-safe-v104-report.txt || true
+          echo "===== OLD UPTIME PATCH SAFETY CHECK =====" | tee -a s9-wifi-safe-v104-report.txt
           if grep -RniE "ghost_uptime|S9_GHOST_UPTIME|VDSO_BTM_L65|return[[:space:]]+delta[[:space:]]*\+|s9_random_uptime_apply_boot_offset|ns_to_ktime\(S9_RANDOM_UPTIME_OFFSET_NS\)|S9_RANDOM_UPTIME_V99_START|S9_RANDOM_UPTIME_V102_START" kernel/time/timekeeping.c arch/arm64/kernel/vdso.c arch/arm64/kernel/vdso/vgettimeofday.c fs/proc/uptime.c fs/proc/stat.c kernel/sys.c kernel/time/posix-timers.c drivers/staging/android/alarm-dev.c include/linux kernel 2>/dev/null; then
-            echo "ERROR: old/broken uptime hook marker found; refusing build" | tee -a s9-wifi-safe-v103-report.txt
+            echo "ERROR: old/broken uptime hook marker found; refusing build" | tee -a s9-wifi-safe-v104-report.txt
             exit 1
           fi
 
-          cp -f s9-random-uptime-v103-report.txt ../s9-random-uptime-v103-report.txt
-          cp -f s9-wifi-safe-v103-report.txt ../s9-wifi-safe-v103-report.txt
-          cp -f uptime-v103-apply.log ../uptime-v103-apply.log
+          cp -f s9-random-uptime-v104-report.txt ../s9-random-uptime-v104-report.txt
+          cp -f s9-wifi-safe-v104-report.txt ../s9-wifi-safe-v104-report.txt
+          cp -f uptime-v104-apply.log ../uptime-v104-apply.log
 
       - name: Patch S9 Broadcom DHD PCIe runtime PM stability v99
         shell: bash
@@ -2652,7 +2669,7 @@ jobs:
           ls -lah arch/arm64/boot || true
           find arch/arm64/boot -maxdepth 8 -type f \( -name "Image*" -o -name "*.dtb" -o -name "dtb.img" -o -name "*.ko" \) -print -exec ls -lh {} \; || true
 
-      - name: Build v103 clock and uptime diagnostic probe
+      - name: Build v104 clock and uptime diagnostic probe
         shell: bash
         working-directory: kernel
         run: |
@@ -2661,7 +2678,7 @@ jobs:
           OUT_DIR="$GITHUB_WORKSPACE/out"
           mkdir -p "$OUT_DIR"
 
-          cat > "$OUT_DIR/v103-uptime-probe.c" <<'EOF_CPROBE'
+          cat > "$OUT_DIR/v104-uptime-probe.c" <<'EOF_CPROBE'
           #define _GNU_SOURCE
           #include <errno.h>
           #include <stdio.h>
@@ -2705,7 +2722,7 @@ jobs:
           }
 
           int main(void) {
-              printf("===== V103 native uptime surface probe =====\n");
+              printf("===== V104 native uptime surface probe =====\n");
               printf("pid=%ld uid=%ld\n", (long)getpid(), (long)getuid());
               printf("CLOCK ids: REALTIME=%d MONOTONIC=%d MONOTONIC_RAW=%d BOOTTIME=%d\n",
                      CLOCK_REALTIME, CLOCK_MONOTONIC, CLOCK_MONOTONIC_RAW, CLOCK_BOOTTIME);
@@ -2748,33 +2765,33 @@ jobs:
           }
           EOF_CPROBE
 
-          sed -i 's/^          //' "$OUT_DIR/v103-uptime-probe.c"
+          sed -i 's/^          //' "$OUT_DIR/v104-uptime-probe.c"
 
           echo "===== BUILD ARM64 UPTIME PROBE V99 ====="
-          PROBE_LOG="$OUT_DIR/v103-uptime-probe-build.log"
+          PROBE_LOG="$OUT_DIR/v104-uptime-probe-build.log"
           : > "$PROBE_LOG"
           set +e
-          aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v103-uptime-probe.c" -o "$OUT_DIR/v103-uptime-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
+          aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v104-uptime-probe.c" -o "$OUT_DIR/v104-uptime-probe-arm64" -lrt >> "$PROBE_LOG" 2>&1
           RC=$?
           if [ "$RC" -ne 0 ]; then
-            aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v103-uptime-probe.c" -o "$OUT_DIR/v103-uptime-probe-arm64" >> "$PROBE_LOG" 2>&1
+            aarch64-linux-gnu-gcc -O2 -static -Wall -Wextra "$OUT_DIR/v104-uptime-probe.c" -o "$OUT_DIR/v104-uptime-probe-arm64" >> "$PROBE_LOG" 2>&1
             RC=$?
           fi
           set -e
-          if [ "$RC" -eq 0 ] && [ -s "$OUT_DIR/v103-uptime-probe-arm64" ]; then
-            file "$OUT_DIR/v103-uptime-probe-arm64" | tee -a "$PROBE_LOG"
-            chmod +x "$OUT_DIR/v103-uptime-probe-arm64"
+          if [ "$RC" -eq 0 ] && [ -s "$OUT_DIR/v104-uptime-probe-arm64" ]; then
+            file "$OUT_DIR/v104-uptime-probe-arm64" | tee -a "$PROBE_LOG"
+            chmod +x "$OUT_DIR/v104-uptime-probe-arm64"
           else
             echo "[WARN] native clock probe build failed; shell diagnostic still works" | tee -a "$PROBE_LOG"
-            cat > "$OUT_DIR/v103-uptime-probe-arm64.README.txt" <<'EOF_README'
+            cat > "$OUT_DIR/v104-uptime-probe-arm64.README.txt" <<'EOF_README'
           Native clock probe did not compile on the runner.
-          Use v103-uptime-surface-check.bat for shell/proc/dumpsys/WiFi checks.
+          Use v104-uptime-surface-check.bat for shell/proc/dumpsys/WiFi checks.
           EOF_README
           fi
 
-          cat > "$OUT_DIR/v103-uptime-surface-check-device.sh" <<'EOF_SH'
+          cat > "$OUT_DIR/v104-uptime-surface-check-device.sh" <<'EOF_SH'
           #!/system/bin/sh
-          echo "===== V103 UPTIME/WIFI SURFACE CHECK DEVICE SH ====="
+          echo "===== V104 UPTIME/WIFI SURFACE CHECK DEVICE SH ====="
           echo "-- identity/kernel --"
           id
           uname -a
@@ -2800,10 +2817,10 @@ jobs:
           dumpsys alarm | grep -iE 'nowRTC|nowELAPSED|RuntimeStarted|Runtime uptime' || true
 
           echo "-- native clock probe --"
-          if [ -x /data/local/tmp/v103-uptime-probe ]; then
-            /data/local/tmp/v103-uptime-probe
+          if [ -x /data/local/tmp/v104-uptime-probe ]; then
+            /data/local/tmp/v104-uptime-probe
           else
-            echo "Missing /data/local/tmp/v103-uptime-probe"
+            echo "Missing /data/local/tmp/v104-uptime-probe"
           fi
 
           echo "-- WiFi service toggle --"
@@ -2855,19 +2872,19 @@ jobs:
           echo "-- dmesg WiFi/KernelSU recent --"
           dmesg 2>/dev/null | grep -iE 's9_random_uptime|ksud|KernelSU|dhd|bcmdhd|wifi|wlan|firmware|nvram|clm|cfg80211|denied|avc' | tail -260 || true
           EOF_SH
-          sed -i 's/^          //' "$OUT_DIR/v103-uptime-surface-check-device.sh"
-          chmod +x "$OUT_DIR/v103-uptime-surface-check-device.sh"
+          sed -i 's/^          //' "$OUT_DIR/v104-uptime-surface-check-device.sh"
+          chmod +x "$OUT_DIR/v104-uptime-surface-check-device.sh"
 
-          cat > "$OUT_DIR/v103-uptime-surface-check.bat" <<'EOF_BAT'
+          cat > "$OUT_DIR/v104-uptime-surface-check.bat" <<'EOF_BAT'
           @echo off
           setlocal EnableExtensions EnableDelayedExpansion
           set ADB=adb
           if exist "D:\platform-tools\adb.exe" set ADB=D:\platform-tools\adb.exe
-          set BIN=%~dp0v103-uptime-probe-arm64
-          set DEVSH=%~dp0v103-uptime-surface-check-device.sh
-          set LOG=%~dp0v103-uptime-surface-check.log
+          set BIN=%~dp0v104-uptime-probe-arm64
+          set DEVSH=%~dp0v104-uptime-surface-check-device.sh
+          set LOG=%~dp0v104-uptime-surface-check.log
 
-          echo ===== V103 UPTIME/WIFI SURFACE CHECK ===== > "%LOG%"
+          echo ===== V104 UPTIME/WIFI SURFACE CHECK ===== > "%LOG%"
           echo Generated at: %DATE% %TIME% >> "%LOG%"
           echo ADB: %ADB% >> "%LOG%"
           echo. >> "%LOG%"
@@ -2877,16 +2894,16 @@ jobs:
           echo. >> "%LOG%"
 
           if exist "%BIN%" (
-            "%ADB%" push "%BIN%" /data/local/tmp/v103-uptime-probe >> "%LOG%" 2>&1
-            "%ADB%" shell "chmod 755 /data/local/tmp/v103-uptime-probe" >> "%LOG%" 2>&1
+            "%ADB%" push "%BIN%" /data/local/tmp/v104-uptime-probe >> "%LOG%" 2>&1
+            "%ADB%" shell "chmod 755 /data/local/tmp/v104-uptime-probe" >> "%LOG%" 2>&1
           ) else (
             echo WARN: Missing native probe binary: %BIN% >> "%LOG%"
           )
 
           echo ===== PUSH/RUN DEVICE DIAGNOSTIC SCRIPT ===== >> "%LOG%"
-          "%ADB%" push "%DEVSH%" /data/local/tmp/v103-uptime-surface-check-device.sh >> "%LOG%" 2>&1
-          "%ADB%" shell "chmod 755 /data/local/tmp/v103-uptime-surface-check-device.sh" >> "%LOG%" 2>&1
-          "%ADB%" shell "su -c /data/local/tmp/v103-uptime-surface-check-device.sh" >> "%LOG%" 2>&1
+          "%ADB%" push "%DEVSH%" /data/local/tmp/v104-uptime-surface-check-device.sh >> "%LOG%" 2>&1
+          "%ADB%" shell "chmod 755 /data/local/tmp/v104-uptime-surface-check-device.sh" >> "%LOG%" 2>&1
+          "%ADB%" shell "su -c /data/local/tmp/v104-uptime-surface-check-device.sh" >> "%LOG%" 2>&1
           echo. >> "%LOG%"
 
           type "%LOG%"
@@ -2895,9 +2912,9 @@ jobs:
           endlocal
           EOF_BAT
 
-          sed -i 's/^          //' "$OUT_DIR/v103-uptime-surface-check.bat"
+          sed -i 's/^          //' "$OUT_DIR/v104-uptime-surface-check.bat"
 
-          ls -lh "$OUT_DIR"/v103-uptime-*
+          ls -lh "$OUT_DIR"/v104-uptime-*
 
       - name: Show useful errors
         if: failure()
@@ -2934,7 +2951,7 @@ jobs:
           } > KernelSU-config.txt
           {
             echo "===== SuSFS build info snapshot ====="
-            echo "workflow=v103-q-ksu-susfs-random-uptime-boottime-vdso-wifi-stable-15-20d"
+            echo "workflow=v104-q-ksu-susfs-random-uptime-boottime-vdso-wifi-stable-15-20d"
             echo "date=$(date -u)"
             echo "DEVICE=${DEVICE:-unknown}"
             echo "MODEL_NAME=${MODEL_NAME:-unknown}"
@@ -2949,9 +2966,9 @@ jobs:
           } > SuSFS-build-info.txt
           ls -lah build.log KernelSU-config.txt SuSFS-build-info.txt || true
           {
-            echo "===== CHATGPT READABLE FAILURE LOG V103 ====="
+            echo "===== CHATGPT READABLE FAILURE LOG V104 ====="
             echo "date_utc=$(date -u)"
-            echo "workflow=v103-q-ksu-susfs-random-uptime-boottime-vdso-wifi-stable-15-20d"
+            echo "workflow=v104-q-ksu-susfs-random-uptime-boottime-vdso-wifi-stable-15-20d"
             echo "repo=${GITHUB_REPOSITORY:-unknown}"
             echo "ref_to_build=${{ inputs.ref_to_build }}"
             echo "device=${DEVICE:-unknown}"
@@ -2969,8 +2986,8 @@ jobs:
             cat KernelSU-config.txt 2>/dev/null || true
             echo
             echo "===== RANDOM UPTIME/SUSFS REPORTS ====="
-            cat s9-random-uptime-v103-report.txt 2>/dev/null || true
-            cat s9-wifi-safe-v103-report.txt 2>/dev/null || true
+            cat s9-random-uptime-v104-report.txt 2>/dev/null || true
+            cat s9-wifi-safe-v104-report.txt 2>/dev/null || true
             echo
             echo "===== WIFI PCIE STABLE V99 REPORT ====="
             cat s9-wifi-pcie-stable-v99-report.txt 2>/dev/null || true
@@ -2984,7 +3001,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v103-q-ksu-susfs-random-uptime-boottime-vdso-wifi-stable
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-failure-diagnostics-v104-q-ksu-susfs-random-uptime-boottime-vdso-wifi-stable
           path: |
             kernel/*.log
             kernel/*.txt
@@ -3045,8 +3062,8 @@ jobs:
           cp -av SuSFS-build-info.txt "$OUT_DIR/SuSFS-build-info.txt" 2>/dev/null || true
           cp -av susfs-*.log "$OUT_DIR/" 2>/dev/null || true
           cp -av susfs-*.txt "$OUT_DIR/" 2>/dev/null || true
-          cp -av s9-random-uptime-v103-report.txt "$OUT_DIR/s9-random-uptime-v103-report.txt" 2>/dev/null || true
-          cp -av s9-wifi-safe-v103-report.txt "$OUT_DIR/s9-wifi-safe-v103-report.txt" 2>/dev/null || true
+          cp -av s9-random-uptime-v104-report.txt "$OUT_DIR/s9-random-uptime-v104-report.txt" 2>/dev/null || true
+          cp -av s9-wifi-safe-v104-report.txt "$OUT_DIR/s9-wifi-safe-v104-report.txt" 2>/dev/null || true
           cp -av s9-wifi-pcie-stable-v99-report.txt "$OUT_DIR/s9-wifi-pcie-stable-v99-report.txt" 2>/dev/null || true
           cp -av s9-wifi-pcie-stable-v99-apply.log "$OUT_DIR/s9-wifi-pcie-stable-v99-apply.log" 2>/dev/null || true
           cp -av s9-wifi-pcie-stable-v99-markers.txt "$OUT_DIR/s9-wifi-pcie-stable-v99-markers.txt" 2>/dev/null || true
@@ -3075,7 +3092,7 @@ jobs:
           RAW_DIR="$OUT_DIR/raw"
           AK_DIR="$GITHUB_WORKSPACE/AnyKernel3"
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
-          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-PixelExp-A12-VendorQ-v103-q-ksu-susfs-random-uptime-boottime-vdso-wifi-stable-${SHORT_SHA}.zip"
+          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-PixelExp-A12-VendorQ-v104-q-ksu-susfs-random-uptime-boottime-vdso-wifi-stable-${SHORT_SHA}.zip"
 
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 "$AK_DIR"
 
@@ -3147,13 +3164,13 @@ jobs:
           set +e
           OUT_DIR="$GITHUB_WORKSPACE/out"
           KERNEL_DIR="$GITHUB_WORKSPACE/kernel"
-          LOG="$OUT_DIR/chatgpt-readable-build-log-v103.txt"
+          LOG="$OUT_DIR/chatgpt-readable-build-log-v104.txt"
           mkdir -p "$OUT_DIR"
 
           {
-            echo "===== CHATGPT READABLE BUILD LOG V103 ====="
+            echo "===== CHATGPT READABLE BUILD LOG V104 ====="
             echo "date_utc=$(date -u)"
-            echo "workflow=v103-q-ksu-susfs-random-uptime-boottime-vdso-wifi-stable-15-20d"
+            echo "workflow=v104-q-ksu-susfs-random-uptime-boottime-vdso-wifi-stable-15-20d"
             echo "repo=${GITHUB_REPOSITORY:-unknown}"
             echo "run=${GITHUB_RUN_ID:-unknown} attempt=${GITHUB_RUN_ATTEMPT:-unknown}"
             echo "sha=${GITHUB_SHA:-unknown}"
@@ -3171,11 +3188,11 @@ jobs:
               echo "===== CONFIG SNAPSHOT ====="
               grep -E "CONFIG_KSU|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_SUSFS|CONFIG_KSU_KPROBES_HOOK|CONFIG_KPROBES|CONFIG_KPROBE_EVENTS|CONFIG_ANDROID" .config 2>/dev/null || true
               echo
-              echo "===== RANDOM UPTIME V103 REPORT ====="
-              cat s9-random-uptime-v103-report.txt 2>/dev/null || true
+              echo "===== RANDOM UPTIME V104 REPORT ====="
+              cat s9-random-uptime-v104-report.txt 2>/dev/null || true
               echo
               echo "===== WIFI/BOOTTIME SAFE REPORT ====="
-              cat s9-wifi-safe-v103-report.txt 2>/dev/null || true
+              cat s9-wifi-safe-v104-report.txt 2>/dev/null || true
               echo
               echo "===== WIFI PCIE STABLE V99 REPORT ====="
               cat s9-wifi-pcie-stable-v99-report.txt 2>/dev/null || true
@@ -3187,8 +3204,8 @@ jobs:
               cat s9-wifi-pcie-stable-v99-markers.txt 2>/dev/null || true
               echo
               echo "===== RANDOM UPTIME MARKERS ====="
-              grep -RniE "S9_RANDOM_UPTIME_V103|s9_random_uptime_v103|S9_RANDOM_UPTIME_V103_SELECTED_DAYS|S9_RANDOM_UPTIME_PROC_V103|S9_RANDOM_UPTIME_VDSO_BTM_V103" \
-                "$KERNEL_DIR/include/linux/s9_random_uptime_v103.h" "$KERNEL_DIR/fs/proc/uptime.c" "$KERNEL_DIR/fs/proc/stat.c" "$KERNEL_DIR/kernel/sys.c" "$KERNEL_DIR/kernel/time/posix-timers.c" "$KERNEL_DIR/drivers/staging/android/alarm-dev.c" "$KERNEL_DIR/arch/arm64/kernel/vdso.c" 2>/dev/null || true
+              grep -RniE "S9_RANDOM_UPTIME_V104|s9_random_uptime_v104|S9_RANDOM_UPTIME_V104_SELECTED_DAYS|S9_RANDOM_UPTIME_PROC_V104|S9_RANDOM_UPTIME_VDSO_BTM_V104" \
+                "$KERNEL_DIR/include/linux/s9_random_uptime_v104.h" "$KERNEL_DIR/fs/proc/uptime.c" "$KERNEL_DIR/fs/proc/stat.c" "$KERNEL_DIR/kernel/sys.c" "$KERNEL_DIR/kernel/time/posix-timers.c" "$KERNEL_DIR/drivers/staging/android/alarm-dev.c" "$KERNEL_DIR/arch/arm64/kernel/vdso.c" 2>/dev/null || true
               echo
               echo "===== BUILD ERRORS/WARNINGS SUMMARY ====="
               grep -nEi "error:|fatal error:|undefined reference|ld.lld|ld:|No such file|No rule to make target|FAILED|recipe for target|Stop\.|not found|Permission denied|unrecognized option|unknown argument|unsupported option|Illegal option|dtb.img" \
@@ -3211,19 +3228,19 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v103-q-ksu-susfs-random-uptime-boottime-vdso-wifi-stable
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-kernel-v104-q-ksu-susfs-random-uptime-boottime-vdso-wifi-stable
           path: |
             out/*.zip
             out/raw/*
             out/*.log
-            out/chatgpt-readable-build-log-v103.txt
-            out/v103-uptime-*
+            out/chatgpt-readable-build-log-v104.txt
+            out/v104-uptime-*
             out/kernel.config
             out/modules-*
             out/KernelSU-*.txt
             out/SuSFS-*.txt
-            out/s9-random-uptime-v103-report.txt
-            out/s9-wifi-safe-v103-report.txt
+            out/s9-random-uptime-v104-report.txt
+            out/s9-wifi-safe-v104-report.txt
             out/s9-wifi-pcie-stable-v99-report.txt
             out/s9-wifi-pcie-stable-v99-apply.log
             out/s9-wifi-pcie-stable-v99-markers.txt
