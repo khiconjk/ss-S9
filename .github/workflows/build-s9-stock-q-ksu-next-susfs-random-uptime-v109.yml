@@ -1,4 +1,4 @@
-name: v110 S9 Stock Android 10 KSU Next SuSFS Random Uptime Deep Stable
+name: v111 S9 Stock Android 10 KSU Next SuSFS Random Uptime Deep Stable
 
 on:
   workflow_dispatch:
@@ -46,7 +46,7 @@ env:
   PLATFORM_VERSION: "10"
   ANDROID_MAJOR_VERSION: q
   TEMP_DEFCONFIG: exynos9810_temp_defconfig
-  WORKFLOW_TAG: v110-stock-q-ksu-susfs-rup
+  WORKFLOW_TAG: v111-stock-q-ksu-susfs-rup
   KSU_NEXT_MODE: legacy
   SUSFS_BRANCH: "1.4.2-kernel-4.9"
   SUSFS_REPO: "https://gitlab.com/1392726643/susfs4ksu.git"
@@ -202,10 +202,10 @@ jobs:
           rm -f "arch/arm64/configs/$TEMP_DEFCONFIG"
           rm -f .config .config.old
           rm -rf include/config include/generated arch/arm64/include/generated
-          rm -f build.log defconfig.log olddefconfig.log uptime-v110-stock-q-apply.log s9-stock-q-random-uptime-v110-report.txt
+          rm -f build.log defconfig.log olddefconfig.log uptime-v111-stock-q-apply.log s9-stock-q-random-uptime-v111-report.txt
           echo "Clean done" | tee -a clean.log
 
-      - name: Patch kernel release for stock Android 10 v110 KSU Next SuSFS
+      - name: Patch kernel release for stock Android 10 v111 KSU Next SuSFS
         shell: bash
         working-directory: kernel
         run: |
@@ -220,7 +220,7 @@ jobs:
           makefile = Path('Makefile')
           text = makefile.read_text(errors='ignore')
           text = re.sub(r'^SUBLEVEL\s*=\s*.*$', 'SUBLEVEL = 220', text, flags=re.MULTILINE)
-          extra = '-S9-STOCKQ-v110-ksu-rup'
+          extra = '-S9-STOCKQ-v111-ksu-rup'
           if re.search(r'^EXTRAVERSION\s*=', text, flags=re.MULTILINE):
               text = re.sub(r'^EXTRAVERSION\s*=\s*.*$', f'EXTRAVERSION = {extra}', text, flags=re.MULTILINE)
           else:
@@ -230,7 +230,7 @@ jobs:
 
           echo "===== AFTER VERSION PATCH ====="
           grep -nE "^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)[[:space:]]*=" Makefile || true
-          RELEASE="4.9.220-S9-STOCKQ-v110-ksu-rup"
+          RELEASE="4.9.220-S9-STOCKQ-v111-ksu-rup"
           LEN=$(printf "%s" "$RELEASE" | wc -c)
           echo "Expected UTS_RELEASE prefix: $RELEASE"
           echo "UTS_RELEASE length=$LEN / 64"
@@ -288,18 +288,18 @@ jobs:
           command -v aarch64-linux-gnu-ld.bfd
           command -v aarch64-linux-gnu-gcc
 
-      - name: Apply S9 stock Q random uptime 15-20 days deep-stable patch v110
+      - name: Apply S9 stock Q random uptime 15-20 days deep-stable patch v111
         shell: bash
         working-directory: kernel
         run: |
           set -euo pipefail
-          LOG="uptime-v110-stock-q-apply.log"
-          REPORT="s9-stock-q-random-uptime-v110-report.txt"
+          LOG="uptime-v111-stock-q-apply.log"
+          REPORT="s9-stock-q-random-uptime-v111-report.txt"
           : > "$LOG"
           : > "$REPORT"
           exec > >(tee -a "$LOG") 2>&1
 
-          echo "===== APPLY S9 STOCK Q RANDOM UPTIME DEEP-STABLE PATCH V110 ====="
+          echo "===== APPLY S9 STOCK Q RANDOM UPTIME DEEP-STABLE PATCH V111 ====="
           echo "Started UTC: $(date -u)"
           echo "Design: based on v107. Patch kernel/time/timekeeping.c only. No VDSO/proc/sys direct hooks. No WiFi/vendor HAL edits."
           echo "Safety: CLOCK_REALTIME unchanged; Android elapsedRealtime expected to remain real; /proc/uptime expected ${INPUT_MIN_DAYS:-15}..${INPUT_MAX_DAYS:-20} days."
@@ -319,7 +319,7 @@ jobs:
           export INPUT_MIN_DAYS
           export INPUT_MAX_DAYS
 
-          cat > scripts/ci_apply_s9_stock_q_random_uptime_v110.py <<'PY'
+          cat > scripts/ci_apply_s9_stock_q_random_uptime_v111.py <<'PY'
           from pathlib import Path
           import os
           import re
@@ -328,7 +328,7 @@ jobs:
 
           ROOT = Path('.')
           TIMEKEEPING = ROOT / 'kernel/time/timekeeping.c'
-          REPORT = ROOT / 's9-stock-q-random-uptime-v110-report.txt'
+          REPORT = ROOT / 's9-stock-q-random-uptime-v111-report.txt'
 
           MIN_DAYS = int(os.environ.get('INPUT_MIN_DAYS', '15'))
           MAX_DAYS = int(os.environ.get('INPUT_MAX_DAYS', '20'))
@@ -346,7 +346,7 @@ jobs:
 
           def write_report(status, extra=None):
               lines = [
-                  'S9 stock Q random uptime v110 deep-stable patch',
+                  'S9 stock Q random uptime v111 deep-stable patch',
                   f'status={status}',
                   f'range_days={MIN_DAYS}..{MAX_DAYS}',
                   f'selected_days={DAYS}',
@@ -386,7 +386,7 @@ jobs:
               txt = strip_old_blocks(txt)
 
               marker = f'''
-          /* S9_RANDOM_UPTIME_V110_START */
+          /* S9_RANDOM_UPTIME_V111_START */
           #define S9_RANDOM_UPTIME_MIN_DAYS {MIN_DAYS}ULL
           #define S9_RANDOM_UPTIME_MAX_DAYS {MAX_DAYS}ULL
           #define S9_RANDOM_UPTIME_SELECTED_DAYS {DAYS}ULL
@@ -396,11 +396,11 @@ jobs:
           {{
           	tk->offs_boot = ktime_add(tk->offs_boot,
           				   ns_to_ktime(S9_RANDOM_UPTIME_OFFSET_NS));
-          	pr_info("s9_random_uptime_v110_stock_q: CLOCK_BOOTTIME offset +%llu days (%llu ns)\\n",
+          	pr_info("s9_random_uptime_v111_stock_q: CLOCK_BOOTTIME offset +%llu days (%llu ns)\\n",
           		(unsigned long long)S9_RANDOM_UPTIME_SELECTED_DAYS,
           		(unsigned long long)S9_RANDOM_UPTIME_OFFSET_NS);
           }}
-          /* S9_RANDOM_UPTIME_V110_END */
+          /* S9_RANDOM_UPTIME_V111_END */
           '''
 
               insert_anchor = 'static struct timekeeper shadow_timekeeper;'
@@ -425,7 +425,7 @@ jobs:
               for label, pattern in banned_patterns.items():
                   if pattern in txt:
                       die(f'banned old uptime pattern remains in timekeeping.c: {label} / {pattern}')
-              if txt.count('S9_RANDOM_UPTIME_V110_START') != 1:
+              if txt.count('S9_RANDOM_UPTIME_V111_START') != 1:
                   die('random uptime marker count is not exactly 1')
               if txt.count('s9_random_uptime_apply_boot_offset(tk);') != 1:
                   die('boot offset apply call count is not exactly 1')
@@ -446,29 +446,29 @@ jobs:
               raise
           PY
 
-          python3 scripts/ci_apply_s9_stock_q_random_uptime_v110.py
+          python3 scripts/ci_apply_s9_stock_q_random_uptime_v111.py
 
-          echo "===== VERIFY S9 STOCK Q RANDOM UPTIME V110 ====="
-          cat s9-stock-q-random-uptime-v110-report.txt
-          grep -RniE "S9_RANDOM_UPTIME_V110|s9_random_uptime_apply_boot_offset|S9_RANDOM_UPTIME_SELECTED_DAYS|tk->raw_sec = 0|ktime_add\(tk->offs_boot" \
+          echo "===== VERIFY S9 STOCK Q RANDOM UPTIME V111 ====="
+          cat s9-stock-q-random-uptime-v111-report.txt
+          grep -RniE "S9_RANDOM_UPTIME_V111|s9_random_uptime_apply_boot_offset|S9_RANDOM_UPTIME_SELECTED_DAYS|tk->raw_sec = 0|ktime_add\(tk->offs_boot" \
             kernel/time/timekeeping.c 2>/dev/null || true
 
 
-      - name: Add KernelSU Next legacy plus SuSFS 4.9 bridge v110
+      - name: Add KernelSU Next legacy plus SuSFS 4.9 bridge v111
         shell: bash
         working-directory: kernel
         run: |
           set -euo pipefail
-          LOG="ksu-susfs-v110-apply.log"
+          LOG="ksu-susfs-v111-apply.log"
           : > "$LOG"
           exec > >(tee -a "$LOG") 2>&1
 
-          echo "===== ADD KERNELSU NEXT LEGACY + SUSFS 4.9 FOR STOCK Q V110 ====="
+          echo "===== ADD KERNELSU NEXT LEGACY + SUSFS 4.9 FOR STOCK Q V111 ====="
           echo "Started UTC: $(date -u)"
           echo "KSU_NEXT_MODE=$KSU_NEXT_MODE"
           echo "SUSFS_BRANCH=$SUSFS_BRANCH"
           echo "SUSFS_REPO=$SUSFS_REPO"
-          echo "Design: keep v110 uptime timekeeping-only patch; add KSU Next/SuSFS only."
+          echo "Design: keep v111 uptime timekeeping-only patch; add KSU Next/SuSFS only."
 
           rm -rf KernelSU KernelSU-Next drivers/kernelsu kernel/kernelsu susfs4ksu
           rm -f susfs-*.log susfs-*.txt ksu-*.txt SuSFS-build-info.txt
@@ -668,7 +668,7 @@ jobs:
               t = drivers_make.read_text(errors='ignore')
               obj_line = f'obj-$(CONFIG_KSU) += {ksu_dir.relative_to(Path("drivers")) if str(ksu_dir).startswith("drivers/") else "kernelsu"}/'
               if 'CONFIG_KSU' not in t or 'kernelsu' not in t:
-                  t += '\n# KernelSU Next v110\n' + obj_line + '\n'
+                  t += '\n# KernelSU Next v111\n' + obj_line + '\n'
                   drivers_make.write_text(t)
                   print('[PATCH] drivers/Makefile: added KernelSU obj line')
 
@@ -748,16 +748,16 @@ jobs:
           if fs_make.exists():
               mt = fs_make.read_text(errors='ignore')
               if 'CONFIG_KSU_SUSFS' not in mt:
-                  mt += '\n# SuSFS for KernelSU Next v110\nobj-$(CONFIG_KSU_SUSFS) += susfs.o\n'
+                  mt += '\n# SuSFS for KernelSU Next v111\nobj-$(CONFIG_KSU_SUSFS) += susfs.o\n'
                   fs_make.write_text(mt)
                   print('[PATCH] fs/Makefile: add susfs.o')
 
           sus = Path('fs/susfs.c')
           if sus.exists():
               s = sus.read_text(errors='ignore')
-              s = s.replace('#include "../drivers/kernelsu/core_hook.h"', '/* KSU_NEXT_SUSFS_V110_REMOVED_OLD_CORE_HOOK */')
-              if 'KSU_NEXT_SUSFS_V110_TRY_UMOUNT_COMPAT' not in s:
-                  compat = '\n#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT\n/* KSU_NEXT_SUSFS_V110_TRY_UMOUNT_COMPAT */\nstatic void try_umount(const char *mnt, bool check_mnt, int flags)\n{\n\tstruct path path;\n\tint err;\n\tif (!mnt)\n\t\treturn;\n\terr = kern_path(mnt, 0, &path);\n\tif (err)\n\t\treturn;\n\tif (check_mnt && path.dentry != path.mnt->mnt_root) {\n\t\tpath_put(&path);\n\t\treturn;\n\t}\n\tpath_umount(&path, flags);\n}\n#endif\n\n'
+              s = s.replace('#include "../drivers/kernelsu/core_hook.h"', '/* KSU_NEXT_SUSFS_V111_REMOVED_OLD_CORE_HOOK */')
+              if 'KSU_NEXT_SUSFS_V111_TRY_UMOUNT_COMPAT' not in s:
+                  compat = '\n#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT\n/* KSU_NEXT_SUSFS_V111_TRY_UMOUNT_COMPAT */\nstatic void try_umount(const char *mnt, bool check_mnt, int flags)\n{\n\tstruct path path;\n\tint err;\n\tif (!mnt)\n\t\treturn;\n\terr = kern_path(mnt, 0, &path);\n\tif (err)\n\t\treturn;\n\tif (check_mnt && path.dentry != path.mnt->mnt_root) {\n\t\tpath_put(&path);\n\t\treturn;\n\t}\n\tpath_umount(&path, flags);\n}\n#endif\n\n'
                   anchor = 'spinlock_t susfs_spin_lock;'
                   if anchor in s:
                       s = s.replace(anchor, compat + anchor, 1)
@@ -776,8 +776,8 @@ jobs:
               fs_text = fs_h.read_text(errors='ignore')
               st_text = st_p.read_text(errors='ignore')
               if 'android_kabi_reserved' not in fs_text and 'android_kabi_reserved' in st_text:
-                  if 'S9_V110_DISABLE_SUS_KSTAT_NO_ANDROID_KABI' not in st_text:
-                      st_text = st_text.replace('#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT', '#if defined(CONFIG_KSU_SUSFS_SUS_KSTAT) && 0 /* S9_V110_DISABLE_SUS_KSTAT_NO_ANDROID_KABI */')
+                  if 'S9_V111_DISABLE_SUS_KSTAT_NO_ANDROID_KABI' not in st_text:
+                      st_text = st_text.replace('#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT', '#if defined(CONFIG_KSU_SUSFS_SUS_KSTAT) && 0 /* S9_V111_DISABLE_SUS_KSTAT_NO_ANDROID_KABI */')
                       st_p.write_text(st_text)
                       print('[PATCH] fs/stat.c: disabled SUS_KSTAT block because android_kabi_reserved fields are absent')
                   else:
@@ -867,12 +867,12 @@ jobs:
           if not kconfigs:
               raise SystemExit('ERROR: no KernelSU Kconfig found')
           for kc in kconfigs:
-              insert_before_last_endmenu(kc, block, 'KSU_SUSFS_KCONFIG_V110')
+              insert_before_last_endmenu(kc, block, 'KSU_SUSFS_KCONFIG_V111')
 
           for kb in list(ksu_dir.rglob('Kbuild')) + list(ksu_dir.rglob('Makefile')):
               text = kb.read_text(errors='ignore')
-              if 'KSU_NEXT_SUSFS_BRIDGE_V110' not in text:
-                  text += '\n# KSU_NEXT_SUSFS_BRIDGE_V110\nccflags-y += -I$(srctree)/include\n'
+              if 'KSU_NEXT_SUSFS_BRIDGE_V111' not in text:
+                  text += '\n# KSU_NEXT_SUSFS_BRIDGE_V111\nccflags-y += -I$(srctree)/include\n'
                   kb.write_text(text)
                   print(f'[PATCH] {kb}: add include ccflags')
 
@@ -882,18 +882,18 @@ jobs:
               t = p.read_text(errors='ignore')
               if 'kernelsu_init' not in t:
                   continue
-              if 'KSU_NEXT_SUSFS_INIT_V110' not in t:
+              if 'KSU_NEXT_SUSFS_INIT_V111' not in t:
                   lines = t.splitlines(True)
                   pos = 0
                   for i, line in enumerate(lines[:100]):
                       if line.lstrip().startswith('#include'):
                           pos = i + 1
-                  lines.insert(pos, '#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_INCLUDE_V110 */\n#include <linux/susfs.h>\nextern void susfs_init(void);\n#endif\n')
+                  lines.insert(pos, '#ifdef CONFIG_KSU_SUSFS\n/* KSU_NEXT_SUSFS_INCLUDE_V111 */\n#include <linux/susfs.h>\nextern void susfs_init(void);\n#endif\n')
                   t = ''.join(lines)
                   m = re.search(r'(?:static\s+)?int\s+(?:__init\s+)?kernelsu_init\s*\([^)]*\)\s*\{', t)
                   if m:
                       insert_at = m.end()
-                      t = t[:insert_at] + '\n#ifdef CONFIG_KSU_SUSFS\n\t/* KSU_NEXT_SUSFS_INIT_V110 */\n\tsusfs_init();\n#endif\n' + t[insert_at:]
+                      t = t[:insert_at] + '\n#ifdef CONFIG_KSU_SUSFS\n\t/* KSU_NEXT_SUSFS_INIT_V111 */\n\t/* v111: local prototype prevents implicit declaration with clang -Werror. */\n\textern void susfs_init(void);\n\tsusfs_init();\n#endif\n' + t[insert_at:]
                       p.write_text(t)
                       print(f'[PATCH] {p}: inserted susfs_init in kernelsu_init')
                       init_done = True
@@ -901,17 +901,25 @@ jobs:
               else:
                   init_done = True
                   break
-          if not init_done:
-              print('[WARN] Could not find kernelsu_init anchor for susfs_init; build may still work if SuSFS patch handled it.')
+          # v111 hardening: make sure susfs_init() has a visible prototype in the same block.
+          for p in ksu_dir.rglob('*.c'):
+              t = p.read_text(errors='ignore')
+              if 'KSU_NEXT_SUSFS_INIT_V111' not in t or 'susfs_init();' not in t:
+                  continue
+              if 'extern void susfs_init(void);' not in t[t.find('KSU_NEXT_SUSFS_INIT_V111')-200:t.find('KSU_NEXT_SUSFS_INIT_V111')+300]:
+                  t = t.replace('/* KSU_NEXT_SUSFS_INIT_V111 */\n\tsusfs_init();', '/* KSU_NEXT_SUSFS_INIT_V111 */\n\t/* v111: local prototype prevents implicit declaration with clang -Werror. */\n\textern void susfs_init(void);\n\tsusfs_init();', 1)
+                  p.write_text(t)
+                  print(f'[PATCH] {p}: added local susfs_init prototype for clang -Werror')
+              break
 
           report = Path('SuSFS-build-info.txt')
           report.write_text('\n'.join([
-              'S9 stock Q v110 KernelSU Next + SuSFS bridge',
+              'S9 stock Q v111 KernelSU Next + SuSFS bridge',
               f'KSU_DIR={ksu_dir}',
               'SUSFS_BRANCH=' + os.environ.get('SUSFS_BRANCH', ''),
               'SUSFS_REPO=' + os.environ.get('SUSFS_REPO', ''),
               'required_config=CONFIG_KSU=y CONFIG_KSU_MANUAL_HOOK=y CONFIG_KSU_SUSFS=y CONFIG_KSU_SUSFS_SUS_KSTAT=n',
-              'uptime_design=unchanged from v110 timekeeping-only /proc uptime patch',
+              'uptime_design=unchanged from v111 timekeeping-only /proc uptime patch',
           ]) + '\n')
           print(report.read_text())
 
@@ -999,7 +1007,7 @@ jobs:
 
           cat "$BASE_DEFCONFIG" "$DEVICE_DEFCONFIG_PATH" > "$TEMP_DEFCONFIG_PATH"
           {
-            echo "# v110 stock Android 10 safety config additions"
+            echo "# v111 stock Android 10 safety config additions"
             echo "CONFIG_ANDROID=y"
             echo "CONFIG_ANDROID_BINDER_IPC=y"
             echo "CONFIG_ANDROID_LOW_MEMORY_KILLER=y"
@@ -1079,13 +1087,13 @@ jobs:
                   continue
               out.append(line)
           out.append('')
-          out.append('# KSU Next + SuSFS hard repair v110 after olddefconfig')
+          out.append('# KSU Next + SuSFS hard repair v111 after olddefconfig')
           for k in sorted(set_y):
               out.append(f'{k}=y')
           for k in sorted(set_n):
               out.append(f'# {k} is not set')
           p.write_text('\n'.join(out) + '\n')
-          print('[PATCH] .config: force-wrote KSU/SuSFS options v110')
+          print('[PATCH] .config: force-wrote KSU/SuSFS options v111')
           PYCONFIG
 
           echo "===== OLDDEFCONFIG AFTER KSU/SUSFS HARD REPAIR ====="
@@ -1116,7 +1124,7 @@ jobs:
           ls -lah arch/arm64/boot || true
           find arch/arm64/boot -maxdepth 8 -type f \( -name "Image*" -o -name "*.dtb" -o -name "dtb.img" -o -name "*.ko" \) -print -exec ls -lh {} \; || true
 
-      - name: Create v110 uptime check scripts and readable build log
+      - name: Create v111 uptime check scripts and readable build log
         if: always()
         shell: bash
         run: |
@@ -1125,40 +1133,40 @@ jobs:
           KERNEL_DIR="$GITHUB_WORKSPACE/kernel"
           mkdir -p "$OUT_DIR/raw"
 
-          cat > "$OUT_DIR/v110-stock-q-readme.txt" <<'EOF_README'
-          ss-S9 stock Android 10 v110 random uptime build
+          cat > "$OUT_DIR/v111-stock-q-readme.txt" <<'EOF_README'
+          ss-S9 stock Android 10 v111 random uptime build
           =================================================
 
           What this build does:
           - Builds Samsung Exynos 9810 kernel for stock Android 10 / Q.
-          - Applies the v107-style deep-stable uptime patch as v110.
+          - Applies the v107-style deep-stable uptime patch as v111.
           - Edits kernel/time/timekeeping.c only.
           - Adds one selected 15-20 day offset to tk->offs_boot during timekeeping_init.
           - Keeps CLOCK_REALTIME unchanged.
           - Does not patch VDSO, fs/proc, kernel/sys.c, fs/stat.c, WiFi, DHD, wificond, or vendor HAL.
 
           Files to send back to ChatGPT if build fails:
-          1. chatgpt-readable-build-log-v110-stock-q.txt
+          1. chatgpt-readable-build-log-v111-stock-q.txt
           2. build.log
           3. defconfig.log
           4. olddefconfig.log
-          5. uptime-v110-stock-q-apply.log
-          6. s9-stock-q-random-uptime-v110-report.txt
+          5. uptime-v111-stock-q-apply.log
+          6. s9-stock-q-random-uptime-v111-report.txt
           EOF_README
 
-          cat > "$OUT_DIR/v110-stock-q-adb-check.bat" <<'EOF_BAT'
+          cat > "$OUT_DIR/v111-stock-q-adb-check.bat" <<'EOF_BAT'
           @echo off
           setlocal EnableExtensions EnableDelayedExpansion
-          title S9 Stock Q v110 uptime check
+          title S9 Stock Q v111 uptime check
 
-          set "LOG=%~dp0s9_stock_q_v110_uptime_check.log"
+          set "LOG=%~dp0s9_stock_q_v111_uptime_check.log"
           set "ADB=adb"
           if exist "%~dp0adb.exe" set "ADB=%~dp0adb.exe"
           set "MIN_DAYS=15"
           set "MAX_DAYS=20"
 
           >"%LOG%" echo ============================================================
-          >>"%LOG%" echo S9 STOCK Q V110 UPTIME CHECK
+          >>"%LOG%" echo S9 STOCK Q V111 UPTIME CHECK
           >>"%LOG%" echo Host start: %date% %time%
           >>"%LOG%" echo Expected /proc/uptime days: %MIN_DAYS%..%MAX_DAYS%
           >>"%LOG%" echo ============================================================
@@ -1203,7 +1211,7 @@ jobs:
           "%ADB%" shell dumpsys activity service com.android.systemui/.SystemUIService 1^>/dev/null 2^>nul
           "%ADB%" shell toybox date +nowRTC=%%s000 >>"%LOG%" 2>&1
           "%ADB%" shell "dumpsys alarm | grep -Ei 'nowELAPSED|Elapsed|RTC' | head -20" >>"%LOG%" 2>&1
-          >>"%LOG%" echo NOTE: v110 deep-stable expects Android elapsedRealtime/runtime uptime to remain real, not fake.
+          >>"%LOG%" echo NOTE: v111 deep-stable expects Android elapsedRealtime/runtime uptime to remain real, not fake.
 
           echo [6/7] Checking WiFi and bad kernel keywords...
           >>"%LOG%" echo.
@@ -1212,7 +1220,7 @@ jobs:
           "%ADB%" shell "dumpsys wifi | grep -Ei 'Wifi is|curState=|mIfaceIsUp|mClientInterfaceName|Supplicant state|Link speed|RSSI|CMD_IP_CONFIGURATION_SUCCESSFUL|native daemons died|Vendor HAL died' | head -120" >>"%LOG%" 2>&1
           >>"%LOG%" echo.
           >>"%LOG%" echo [dmesg bad keyword scan]
-          "%ADB%" shell "dmesg | grep -Ei 'dhdpcie_bus_suspend: Entering suspend state|send H2D_HOST_D3_INFORM|Got D3 Ack|D3_ACK|exynos-pcie.*link down|dhdpcie_linkdown_cb|Event HANG|CMD_RECOVERY_DISABLE_WIFI|WifiNative Failure|One of the native daemons died|Vendor HAL died|s9_random_uptime_v110' | tail -120" >>"%LOG%" 2>&1
+          "%ADB%" shell "dmesg | grep -Ei 'dhdpcie_bus_suspend: Entering suspend state|send H2D_HOST_D3_INFORM|Got D3 Ack|D3_ACK|exynos-pcie.*link down|dhdpcie_linkdown_cb|Event HANG|CMD_RECOVERY_DISABLE_WIFI|WifiNative Failure|One of the native daemons died|Vendor HAL died|s9_random_uptime_v111' | tail -120" >>"%LOG%" 2>&1
 
           echo [7/7] Done.
           echo Log saved: %LOG%
@@ -1228,13 +1236,13 @@ jobs:
 
           EOF_BAT
 
-          sed -i 's/^          //' "$OUT_DIR/v110-stock-q-readme.txt" "$OUT_DIR/v110-stock-q-adb-check.bat"
+          sed -i 's/^          //' "$OUT_DIR/v111-stock-q-readme.txt" "$OUT_DIR/v111-stock-q-adb-check.bat"
 
-          LOG="$OUT_DIR/chatgpt-readable-build-log-v110-stock-q.txt"
+          LOG="$OUT_DIR/chatgpt-readable-build-log-v111-stock-q.txt"
           {
-            echo "===== CHATGPT READABLE BUILD LOG V110 STOCK Q ====="
+            echo "===== CHATGPT READABLE BUILD LOG V111 STOCK Q ====="
             echo "date_utc=$(date -u)"
-            echo "workflow=v110-stock-q-rup"
+            echo "workflow=v111-stock-q-rup"
             echo "repo=${GITHUB_REPOSITORY:-unknown}"
             echo "ref_to_build=${{ inputs.ref_to_build }}"
             echo "device=${DEVICE:-unknown}"
@@ -1250,19 +1258,19 @@ jobs:
               grep -nE "^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)[[:space:]]*=" Makefile 2>/dev/null || true
               echo
               echo "===== UPTIME REPORT ====="
-              cat s9-stock-q-random-uptime-v110-report.txt 2>/dev/null || true
+              cat s9-stock-q-random-uptime-v111-report.txt 2>/dev/null || true
               echo
               echo "===== UPTIME APPLY LOG ====="
-              cat uptime-v110-stock-q-apply.log 2>/dev/null || true
+              cat uptime-v111-stock-q-apply.log 2>/dev/null || true
               echo
               echo "===== KSU/SUSFS REPORT ====="
               cat SuSFS-build-info.txt 2>/dev/null || true
               echo
               echo "===== KSU/SUSFS APPLY LOG ====="
-              cat ksu-susfs-v110-apply.log 2>/dev/null || true
+              cat ksu-susfs-v111-apply.log 2>/dev/null || true
               echo
               echo "===== RANDOM UPTIME MARKERS ====="
-              grep -RniE "S9_RANDOM_UPTIME_V110|s9_random_uptime_apply_boot_offset|S9_RANDOM_UPTIME_SELECTED_DAYS|offs_boot = ktime_set|ktime_add\(tk->offs_boot" kernel/time/timekeeping.c 2>/dev/null || true
+              grep -RniE "S9_RANDOM_UPTIME_V111|s9_random_uptime_apply_boot_offset|S9_RANDOM_UPTIME_SELECTED_DAYS|offs_boot = ktime_set|ktime_add\(tk->offs_boot" kernel/time/timekeeping.c 2>/dev/null || true
               echo
               echo "===== CONFIG SNAPSHOT ====="
               grep -E "CONFIG_SOC_EXYNOS9810|CONFIG_CAMERA_STAR|CONFIG_CAMERA_STAR2|CONFIG_CAMERA_CROWN|CONFIG_EXYNOS_DTBTOOL|CONFIG_BUILD_ARM64_APPENDED|CONFIG_MODULES|CONFIG_ANDROID|CONFIG_ANDROID_BINDER|CONFIG_ANDROID_LOW_MEMORY_KILLER" .config 2>/dev/null || true
@@ -1324,13 +1332,13 @@ jobs:
           cp -av defconfig.log "$OUT_DIR/defconfig.log" || true
           cp -av olddefconfig.log "$OUT_DIR/olddefconfig.log" || true
           cp -av build.log "$OUT_DIR/build.log" || true
-          cp -av uptime-v110-stock-q-apply.log "$OUT_DIR/uptime-v110-stock-q-apply.log" || true
-          cp -av ksu-susfs-v110-apply.log "$OUT_DIR/ksu-susfs-v110-apply.log" || true
+          cp -av uptime-v111-stock-q-apply.log "$OUT_DIR/uptime-v111-stock-q-apply.log" || true
+          cp -av ksu-susfs-v111-apply.log "$OUT_DIR/ksu-susfs-v111-apply.log" || true
           cp -av SuSFS-build-info.txt "$OUT_DIR/SuSFS-build-info.txt" || true
           cp -av susfs-*.log "$OUT_DIR/" 2>/dev/null || true
           cp -av susfs-*.txt "$OUT_DIR/" 2>/dev/null || true
           cp -av ksu-*.txt "$OUT_DIR/" 2>/dev/null || true
-          cp -av s9-stock-q-random-uptime-v110-report.txt "$OUT_DIR/s9-stock-q-random-uptime-v110-report.txt" || true
+          cp -av s9-stock-q-random-uptime-v111-report.txt "$OUT_DIR/s9-stock-q-random-uptime-v111-report.txt" || true
           cp -av .config "$OUT_DIR/kernel.config" || true
           echo "===== ARTIFACT TREE ====="
           find "$OUT_DIR" -maxdepth 3 -type f -print -exec ls -lh {} \;
@@ -1344,7 +1352,7 @@ jobs:
           RAW_DIR="$OUT_DIR/raw"
           AK_DIR="$GITHUB_WORKSPACE/AnyKernel3"
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
-          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-StockQ-v110-ksu-next-susfs-rup-${SHORT_SHA}.zip"
+          ZIP_NAME="ss-S9-${DEVICE}-${MODEL_NAME}-StockQ-v111-ksu-next-susfs-rup-${SHORT_SHA}.zip"
 
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 "$AK_DIR"
           cd "$AK_DIR"
@@ -1360,7 +1368,7 @@ jobs:
             "## Target: Samsung Galaxy S9 family ${MODEL_NAME} / ${DEVICE} / Stock Android 10 Q" \
             "" \
             "properties() { '" \
-            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} Stock Android10 Q v110 KSU-Next SuSFS RandomUptime15-20d" \
+            "kernel.string=ss-S9 ${DEVICE} ${MODEL_NAME} Stock Android10 Q v111 KSU-Next SuSFS RandomUptime15-20d" \
             "do.devicecheck=1" \
             "do.modules=0" \
             "do.systemless=1" \
@@ -1424,7 +1432,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-stock-q-v110-ksu-next-susfs-random-uptime
+          name: ss-S9-${{ steps.target.outputs.device }}-${{ steps.target.outputs.model }}-stock-q-v111-ksu-next-susfs-random-uptime
           path: |
             out/*.zip
             out/raw/*
